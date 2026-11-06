@@ -50,8 +50,8 @@ OVERLAY_PKG = "com.ryu.settings.othericons.overlay"
 OVERLAY_APK = "RyuOtherSettingsIcons.apk"
 SCREEN = "xml/other_personal_settings"
 MODULE_ID = "ryu_other_settings_icons"
-VERSION = "3.0"
-VERSION_CODE = 3
+VERSION = "3.1"
+VERSION_CODE = 31
 
 APKTOOL_URL = "https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar"
 SIGNER_URL = "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
@@ -177,6 +177,8 @@ def verify(aapt2, orig, patched, new_ids, xml_entry):
         if rp["drawable/" + n][0] != rid:
             sys.exit(f"VERIFY: id mismatch for {n}")
     tree = subprocess.check_output([aapt2, "dump", "xmltree", "--file", xml_entry, patched], text=True)
+    if tree.count("apk/miuisettings:showIcon=true") < len(new_ids):
+        sys.exit("VERIFY: miuisettings:showIcon=true (boolean) missing")
     for rid in new_ids.values():
         if f"@0x{rid:08x}" not in tree:
             sys.exit(f"VERIFY: icon 0x{rid:08x} not referenced")
@@ -262,9 +264,13 @@ def main():
             ref = f"@{TARGET_PKG}:drawable/{dname}"
         else:
             ref = f"@drawable/{slot_of[key]}"  # own resource, patched to a dynamic ref below
-        return tag.replace(f'android:key="{key}"', f'android:icon="{ref}" android:key="{key}"', 1)
+        # miuisettings Preference hides the icon unless miuisettings:showIcon="true"
+        return tag.replace(f'android:key="{key}"',
+                           f'android:icon="{ref}" miuisettings:showIcon="true" android:key="{key}"', 1)
 
     xml = re.sub(r'<com\.android\.settingslib[^>]*?android:key="([\w.]+)"[^>]*>', add_icon, xml)
+    if "xmlns:miuisettings=" not in xml:
+        xml = xml.replace("<PreferenceScreen", '<PreferenceScreen xmlns:miuisettings="http://schemas.android.com/apk/miuisettings"', 1)
 
     # ---- overlay sources ----
     ov = os.path.join(work, "overlay")
