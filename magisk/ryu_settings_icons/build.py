@@ -50,10 +50,11 @@ OVERLAY_PKG = "com.ryu.settings.othericons.overlay"
 OVERLAY_APK = "RyuOtherSettingsIcons.apk"
 SCREEN = "xml/other_personal_settings"
 WIFI_SCREEN = "xml/wifi_configure_settings"
+WIFI_DETAILS = "xml/wifi_network_details_fragment2"
 SAVED_WIFI_ACTIVITY = "com.android.settings.Settings$SavedAccessPointsSettingsActivity"
 MODULE_ID = "ryu_other_settings_icons"
-VERSION = "3.3"
-VERSION_CODE = 33
+VERSION = "3.4"
+VERSION_CODE = 34
 
 APKTOOL_URL = "https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar"
 SIGNER_URL = "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
@@ -164,7 +165,7 @@ def patch_dynamic_refs(data, pkg_id):
     return bytes(data), patched
 
 
-def verify(aapt2, orig, patched, new_ids, xml_entry, wifi_entry):
+def verify(aapt2, orig, patched, new_ids, xml_entry, wifi_entry, details_entry=None):
     """Sanity checks of the patched APK against the original."""
     dump_o = subprocess.check_output([aapt2, "dump", "resources", orig], text=True)
     dump_p = subprocess.check_output([aapt2, "dump", "resources", patched], text=True)
@@ -200,10 +201,23 @@ def verify(aapt2, orig, patched, new_ids, xml_entry, wifi_entry):
     print("wifi screen: lines not in original:", len(extra))
     for l in extra:
         print("   ", l[:150])
+    if details_entry:
+        dump = lambda a: subprocess.check_output([aapt2, "dump", "xmltree", "--file", details_entry, a], text=True)
+        do, dp = dump(orig), dump(patched)
+        norm = lambda t: [re.sub(r"\(line=\d+\)", "", l).strip().replace("apk/res-auto:", "apk/res/com.android.settings:")
+                          for l in t.splitlines() if "N: " not in l]
+        no, np_ = norm(do), norm(dp)
+        extra = [l for l in np_ if l not in no]
+        missing = [l for l in no if l not in np_]
+        print("wifi details: added lines:", len(extra), "missing:", len(missing))
+        for l in extra:
+            print("   +", l[:140])
+        if missing or len(extra) != 3 or dp.count('key(0x010101e8)="ryu_hidden_') != 3:
+            sys.exit("VERIFY: wifi details changed unexpectedly")
     zo, zp = zipfile.ZipFile(orig), zipfile.ZipFile(patched)
     po = {i.filename: (i.CRC, i.compress_type) for i in zo.infolist()}
     for i in zp.infolist():
-        if i.filename in po and i.filename not in ("resources.arsc", xml_entry, wifi_entry) and po[i.filename] != (i.CRC, i.compress_type):
+        if i.filename in po and i.filename not in ("resources.arsc", xml_entry, wifi_entry, details_entry) and po[i.filename] != (i.CRC, i.compress_type):
             sys.exit(f"VERIFY: entry {i.filename} changed")
     if zp.testzip() is not None:
         sys.exit("VERIFY: zip test failed")
@@ -269,7 +283,7 @@ def main():
     xml = load_xml(SCREEN)
 
     # ---- Wi-Fi > Advanced: "Saved networks" opens the stock Android activity (optional) ----
-    wifi = None
+    wifi = details = None
     if args.stock_saved_wifi:
         wifi = load_xml(WIFI_SCREEN)
         pat = re.compile(r'<com\.android\.settingslib\.miuisettings\.preference\.Preference ([^>]*?)android:key="saved_wifi"([^>]*?)/>')
@@ -285,6 +299,22 @@ def main():
         manifest = subprocess.check_output([aapt2, "dump", "xmltree", "--file", "AndroidManifest.xml", apk], text=True)
         if f'"{SAVED_WIFI_ACTIVITY}"' not in manifest:
             sys.exit(SAVED_WIFI_ACTIVITY + " missing in AndroidManifest")
+        # The stock network details page has three Compose items (privacy_settings,
+        # certificate_details, server_name).  In the miuix activity a ComposeView crashes
+        # (ViewTreeLifecycleOwner not found) as soon as it is laid out.  Their controllers
+        # need the preferences to exist, so each one is put into its own hidden category:
+        # found by the controller, never shown, never laid out.
+        details = load_xml(WIFI_DETAILS)
+        cpat = re.compile(r'<com\.android\.settings\.spa\.preference\.ComposePreference [^>]*?android:key="(\w+)"[^>]*?/>')
+        wrapped = []
+
+        def hide(mm):
+            wrapped.append(mm.group(1))
+            return (f'<PreferenceCategory android:key="ryu_hidden_{mm.group(1)}" settings:isPreferenceVisible="false">'
+                    + mm.group(0) + '</PreferenceCategory>')
+        details = cpat.sub(hide, details)
+        if sorted(wrapped) != ["certificate_details", "privacy_settings", "server_name"]:
+            sys.exit(f"unexpected Compose items in {WIFI_DETAILS}: {wrapped}")
 
     keys = re.findall(r'android:key="([\w.]+)"', xml)
     wanted = [k for k in keys if k in ICONS]
@@ -322,6 +352,7 @@ def main():
     open(os.path.join(ov, "res", "xml", SCREEN.split("/")[1] + ".xml"), "w", encoding="utf-8").write(xml)
     if wifi:
         open(os.path.join(ov, "res", "xml", WIFI_SCREEN.split("/")[1] + ".xml"), "w", encoding="utf-8").write(wifi)
+        open(os.path.join(ov, "res", "xml", WIFI_DETAILS.split("/")[1] + ".xml"), "w", encoding="utf-8").write(details)
     glyphs = mdi_paths(mdi, {ICONS[k][0] for k in new_icons})
     for k in new_icons:
         name, color = ICONS[k]
@@ -345,6 +376,7 @@ def main():
     # ---- patch Settings.apk itself ----
     xml_entry = f"res/xml/{SCREEN.split('/')[1]}.xml"
     wifi_entry = f"res/xml/{WIFI_SCREEN.split('/')[1]}.xml"
+    details_entry = f"res/xml/{WIFI_DETAILS.split('/')[1]}.xml"
     donor = zipfile.ZipFile(unsigned)
     ddump = parse_dump(subprocess.check_output([aapt2, "dump", "resources", unsigned], text=True))
     files = [(slot_of[k], f"res/drawable/{slot_of[k]}.xml") for k in new_icons]
@@ -363,11 +395,12 @@ def main():
     patched = apk_patch.rebuild_zip(
         src,
         replace=dict({"resources.arsc": new_arsc, xml_entry: new_xml},
-                     **({wifi_entry: donor.read(wifi_entry)} if wifi else {})),
+                     **({wifi_entry: donor.read(wifi_entry), details_entry: donor.read(details_entry)} if wifi else {})),
         add=[(path, donor.read(path)) for _, path in files])
     patched_path = os.path.join(work, "Settings.apk")
     open(patched_path, "wb").write(patched)
-    verify(aapt2, apk, patched_path, new_ids, xml_entry, wifi_entry if wifi else None)
+    verify(aapt2, apk, patched_path, new_ids, xml_entry, wifi_entry if wifi else None,
+           details_entry if wifi else None)
     patched_md5 = hashlib.md5(patched).hexdigest()
 
     # ---- module ----

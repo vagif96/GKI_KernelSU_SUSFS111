@@ -54,7 +54,14 @@ Remove the module in the KernelSU / Magisk manager and reboot.
 
 `python3 build.py Settings.apk --stock-saved-wifi` makes Wi-Fi → Advanced →
 Saved networks open `Settings$SavedAccessPointsSettingsActivity` (stock Android
-screen with QR sharing). **Off by default:** on HyperOS 3 the stock network
-details page crashes for every network except the connected one
-(`IllegalStateException: ViewTreeLifecycleOwner not found` — Compose views
-inside the miuix activity).
+screen: details, QR sharing, delete/connect for every saved network).
+
+The stock details page (`xml/wifi_network_details_fragment2`) contains three Compose
+items (`privacy_settings`, `certificate_details`, `server_name`). Inside the miuix
+activity a ComposeView crashes as soon as it is laid out
+(`IllegalStateException: ViewTreeLifecycleOwner not found`). Their controllers need
+the preferences to exist, so the build wraps each one in its own hidden
+`PreferenceCategory` (`isPreferenceVisible=false`): the controllers still find them,
+but they are never shown. MAC privacy stays available via the regular `privacy` item.
+
+`ryu_tweaks` enables this by default (`--no-stock-saved-wifi` turns it off).
