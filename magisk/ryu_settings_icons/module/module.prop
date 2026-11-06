@@ -1,0 +1,6 @@
+id=ryu_other_settings_icons
+name=Ryu Other Settings Icons
+version=v@VERSION@
+versionCode=@VERSION_CODE@
+author=vagif96
+description=HyperOS-style icons for Settings > Additional settings (ProjectRyu / HyperOS 3). Built for one specific Settings.apk; auto-disables after a firmware update.
