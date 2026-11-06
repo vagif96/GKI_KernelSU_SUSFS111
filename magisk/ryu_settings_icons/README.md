@@ -49,3 +49,12 @@ Icons and colours per entry are in `icons.py`.
 ## Removing
 
 Remove the module in the KernelSU / Magisk manager and reboot.
+
+## Optional: stock "Saved networks" screen
+
+`python3 build.py Settings.apk --stock-saved-wifi` makes Wi-Fi → Advanced →
+Saved networks open `Settings$SavedAccessPointsSettingsActivity` (stock Android
+screen with QR sharing). **Off by default:** on HyperOS 3 the stock network
+details page crashes for every network except the connected one
+(`IllegalStateException: ViewTreeLifecycleOwner not found` — Compose views
+inside the miuix activity).

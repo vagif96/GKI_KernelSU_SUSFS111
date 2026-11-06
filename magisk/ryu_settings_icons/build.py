@@ -52,8 +52,8 @@ SCREEN = "xml/other_personal_settings"
 WIFI_SCREEN = "xml/wifi_configure_settings"
 SAVED_WIFI_ACTIVITY = "com.android.settings.Settings$SavedAccessPointsSettingsActivity"
 MODULE_ID = "ryu_other_settings_icons"
-VERSION = "3.2"
-VERSION_CODE = 32
+VERSION = "3.3"
+VERSION_CODE = 33
 
 APKTOOL_URL = "https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar"
 SIGNER_URL = "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
@@ -185,10 +185,14 @@ def verify(aapt2, orig, patched, new_ids, xml_entry, wifi_entry):
         if f"@0x{rid:08x}" not in tree:
             sys.exit(f"VERIFY: icon 0x{rid:08x} not referenced")
     # Wi-Fi screen: identical to the original except the saved_wifi item
+    if wifi_entry is None:
+        wifi_entry = "-"
     def tree_of(apkp):
         return subprocess.check_output([aapt2, "dump", "xmltree", "--file", wifi_entry, apkp], text=True)
-    wo, wp = tree_of(orig), tree_of(patched)
-    if "SavedAccessPointsSettingsActivity" not in wp or "MiuiSavedAccessPointsWifiSettings" in wp:
+    wo = wp = ""
+    if wifi_entry != "-":
+        wo, wp = tree_of(orig), tree_of(patched)
+    if wifi_entry != "-" and ("SavedAccessPointsSettingsActivity" not in wp or "MiuiSavedAccessPointsWifiSettings" in wp):
         sys.exit("VERIFY: saved_wifi not replaced")
     strip = lambda t: [l.strip().split("(line=")[0] for l in t.splitlines() if "saved_wifi" not in l and "xmlns" not in l and "N: " not in l]
     so, sp = strip(wo), strip(wp)
@@ -220,6 +224,10 @@ def main():
     ap.add_argument("settings_apk")
     ap.add_argument("--out", default=os.path.join(HERE, "out"))
     ap.add_argument("--work", default=os.path.join(HERE, "work"))
+    ap.add_argument("--stock-saved-wifi", action="store_true",
+                    help="Wi-Fi > Saved networks opens the stock Android screen. Off by default: on "
+                         "HyperOS 3 its network details crash (Compose: ViewTreeLifecycleOwner not found) "
+                         "for every network except the connected one")
     args = ap.parse_args()
     work, out = os.path.abspath(args.work), os.path.abspath(args.out)
     os.makedirs(work, exist_ok=True)
@@ -260,21 +268,23 @@ def main():
 
     xml = load_xml(SCREEN)
 
-    # ---- Wi-Fi > Advanced: "Saved networks" opens the stock Android activity ----
-    wifi = load_xml(WIFI_SCREEN)
-    pat = re.compile(r'<com\.android\.settingslib\.miuisettings\.preference\.Preference ([^>]*?)android:key="saved_wifi"([^>]*?)/>')
-    m = pat.search(wifi)
-    if not m:
-        sys.exit("saved_wifi preference not found in " + WIFI_SCREEN)
-    title = re.search(r'android:title="([^"]+)"', m.group(0)).group(1)
-    wifi = wifi[:m.start()] + (
-        f'<com.android.settingslib.miuisettings.preference.ValuePreference android:title="{title}" android:key="saved_wifi">'
-        f'<intent android:targetPackage="{TARGET_PKG}" android:action="android.intent.action.MAIN" '
-        f'android:targetClass="{SAVED_WIFI_ACTIVITY}" />'
-        '</com.android.settingslib.miuisettings.preference.ValuePreference>') + wifi[m.end():]
-    manifest = subprocess.check_output([aapt2, "dump", "xmltree", "--file", "AndroidManifest.xml", apk], text=True)
-    if f'"{SAVED_WIFI_ACTIVITY}"' not in manifest:
-        sys.exit(SAVED_WIFI_ACTIVITY + " missing in AndroidManifest")
+    # ---- Wi-Fi > Advanced: "Saved networks" opens the stock Android activity (optional) ----
+    wifi = None
+    if args.stock_saved_wifi:
+        wifi = load_xml(WIFI_SCREEN)
+        pat = re.compile(r'<com\.android\.settingslib\.miuisettings\.preference\.Preference ([^>]*?)android:key="saved_wifi"([^>]*?)/>')
+        m = pat.search(wifi)
+        if not m:
+            sys.exit("saved_wifi preference not found in " + WIFI_SCREEN)
+        title = re.search(r'android:title="([^"]+)"', m.group(0)).group(1)
+        wifi = wifi[:m.start()] + (
+            f'<com.android.settingslib.miuisettings.preference.ValuePreference android:title="{title}" android:key="saved_wifi">'
+            f'<intent android:targetPackage="{TARGET_PKG}" android:action="android.intent.action.MAIN" '
+            f'android:targetClass="{SAVED_WIFI_ACTIVITY}" />'
+            '</com.android.settingslib.miuisettings.preference.ValuePreference>') + wifi[m.end():]
+        manifest = subprocess.check_output([aapt2, "dump", "xmltree", "--file", "AndroidManifest.xml", apk], text=True)
+        if f'"{SAVED_WIFI_ACTIVITY}"' not in manifest:
+            sys.exit(SAVED_WIFI_ACTIVITY + " missing in AndroidManifest")
 
     keys = re.findall(r'android:key="([\w.]+)"', xml)
     wanted = [k for k in keys if k in ICONS]
@@ -310,7 +320,8 @@ def main():
     os.makedirs(os.path.join(ov, "res", "xml"))
     os.makedirs(os.path.join(ov, "res", "drawable"))
     open(os.path.join(ov, "res", "xml", SCREEN.split("/")[1] + ".xml"), "w", encoding="utf-8").write(xml)
-    open(os.path.join(ov, "res", "xml", WIFI_SCREEN.split("/")[1] + ".xml"), "w", encoding="utf-8").write(wifi)
+    if wifi:
+        open(os.path.join(ov, "res", "xml", WIFI_SCREEN.split("/")[1] + ".xml"), "w", encoding="utf-8").write(wifi)
     glyphs = mdi_paths(mdi, {ICONS[k][0] for k in new_icons})
     for k in new_icons:
         name, color = ICONS[k]
@@ -351,11 +362,12 @@ def main():
         sys.exit(f"expected {len(new_icons)} retargeted icon references, got {n}")
     patched = apk_patch.rebuild_zip(
         src,
-        replace={"resources.arsc": new_arsc, xml_entry: new_xml, wifi_entry: donor.read(wifi_entry)},
+        replace=dict({"resources.arsc": new_arsc, xml_entry: new_xml},
+                     **({wifi_entry: donor.read(wifi_entry)} if wifi else {})),
         add=[(path, donor.read(path)) for _, path in files])
     patched_path = os.path.join(work, "Settings.apk")
     open(patched_path, "wb").write(patched)
-    verify(aapt2, apk, patched_path, new_ids, xml_entry, wifi_entry)
+    verify(aapt2, apk, patched_path, new_ids, xml_entry, wifi_entry if wifi else None)
     patched_md5 = hashlib.md5(patched).hexdigest()
 
     # ---- module ----
