@@ -1,12 +1,15 @@
 #!/system/bin/sh
-# Safety net: if the firmware (Settings.apk) changed, the overlay's resource ids
-# are no longer valid -> disable the module so Settings does not crash.
+# Safety net: after a firmware update the patched Settings.apk no longer matches
+# the system -> disable the module instead of replacing the new Settings.
 MODDIR=${0%/*}
 . "$MODDIR/common.sh"
-want=$(cat "$MODDIR/settings_md5")
-have=$(settings_md5)
-if [ -n "$have" ] && [ "$have" != "$want" ]; then
+for c in /system_ext/priv-app/Settings/Settings.apk /system/priv-app/Settings/Settings.apk \
+         /product/priv-app/Settings/Settings.apk; do
+  [ -f "$c" ] && { real=$c; break; }
+done
+[ -n "$real" ] || exit 0
+have=$(file_md5 "$real")
+if [ "$have" != "$(cat "$MODDIR/settings_md5")" ] && [ "$have" != "$(cat "$MODDIR/patched_md5")" ]; then
   touch "$MODDIR/disable"
-  rm -f "$MODDIR"/system/product/overlay/*.apk
   sed -i 's/^description=.*/description=DISABLED: firmware changed, rebuild the module for the new Settings.apk/' "$MODDIR/module.prop"
 fi

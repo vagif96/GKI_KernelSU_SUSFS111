@@ -2,23 +2,26 @@
 """Build the "Ryu Other Settings Icons" KernelSU/Magisk module.
 
 Adds HyperOS-style icons to Settings -> "Additional settings"
-(xml/other_personal_settings) through a static RRO overlay.
+(xml/other_personal_settings) by patching Settings.apk itself.
 
 How it works
 ------------
-The overlay replaces xml/other_personal_settings with a copy that has an
-android:icon on every entry.  The replaced XML is parsed with the overlay's
-dynamic reference table, so:
-  * the overlay is compiled as package 0x7e (not 0x7f) -> every reference to
-    com.android.settings (0x7f: strings, attrs, existing drawables) stays an
-    absolute, valid id;
-  * references to the overlay's own icon drawables are rewritten in the binary
-    XML to TYPE_DYNAMIC_REFERENCE, which the runtime translates to the package
-    id the overlay is actually loaded with.
+* A small "donor" APK is compiled with aapt2: the screen XML with an
+  android:icon on every entry, plus one vector drawable per icon.
+* resources.arsc of Settings.apk gets 38 new drawable entries appended to the
+  drawable type (no existing id or value changes, see apk_patch.py).
+* The screen XML is replaced (icon references point to the new ids), the
+  drawables are added, every other zip entry is copied byte-for-byte (dex
+  unchanged -> existing oat/vdex stay valid).
+* The original APK Signing Block is put back.  Android does not verify the
+  integrity of APKs on system partitions (ProjectRyu's own Settings.apk already
+  fails verification), it only reads the certificates, so the platform
+  signature / android.uid.system stays intact.
+* The module mounts the patched APK over the original file only; SELinux
+  labels are copied from the real files at install time.
 
-Because the result depends on resource ids, the module must be rebuilt for
-every firmware.  The module refuses to install / disables itself when the
-Settings.apk on the device differs from the one it was built for.
+The module must be rebuilt for every firmware: the installer refuses a
+different Settings.apk and the module disables itself after an update.
 
 Usage:  python3 build.py /path/to/Settings.apk [--out DIR]
 Needs:  java, node+npm (for @mdi/js), curl, zip; downloads apktool and
@@ -39,14 +42,15 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from icons import ICONS  # noqa: E402
+import apk_patch  # noqa: E402
 
 TARGET_PKG = "com.android.settings"
 OVERLAY_PKG = "com.ryu.settings.othericons.overlay"
 OVERLAY_APK = "RyuOtherSettingsIcons.apk"
 SCREEN = "xml/other_personal_settings"
 MODULE_ID = "ryu_other_settings_icons"
-VERSION = "1.0"
-VERSION_CODE = 1
+VERSION = "2.0"
+VERSION_CODE = 2
 
 APKTOOL_URL = "https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar"
 SIGNER_URL = "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
@@ -157,6 +161,43 @@ def patch_dynamic_refs(data, pkg_id):
     return bytes(data), patched
 
 
+def verify(aapt2, orig, patched, new_ids, xml_entry):
+    """Sanity checks of the patched APK against the original."""
+    dump_o = subprocess.check_output([aapt2, "dump", "resources", orig], text=True)
+    dump_p = subprocess.check_output([aapt2, "dump", "resources", patched], text=True)
+    ro, rp = parse_dump(dump_o), parse_dump(dump_p)
+    for name, val in ro.items():
+        if rp.get(name) != val:
+            sys.exit(f"VERIFY: resource {name} changed")
+    added = set(rp) - set(ro)
+    if added != {"drawable/" + n for n in new_ids}:
+        sys.exit(f"VERIFY: unexpected added resources {sorted(added)[:5]}")
+    for n, rid in new_ids.items():
+        if rp["drawable/" + n][0] != rid:
+            sys.exit(f"VERIFY: id mismatch for {n}")
+    tree = subprocess.check_output([aapt2, "dump", "xmltree", "--file", xml_entry, patched], text=True)
+    for rid in new_ids.values():
+        if f"@0x{rid:08x}" not in tree:
+            sys.exit(f"VERIFY: icon 0x{rid:08x} not referenced")
+    zo, zp = zipfile.ZipFile(orig), zipfile.ZipFile(patched)
+    po = {i.filename: (i.CRC, i.compress_type) for i in zo.infolist()}
+    for i in zp.infolist():
+        if i.filename in po and i.filename not in ("resources.arsc", xml_entry) and po[i.filename] != (i.CRC, i.compress_type):
+            sys.exit(f"VERIFY: entry {i.filename} changed")
+    if zp.testzip() is not None:
+        sys.exit("VERIFY: zip test failed")
+    for i in zp.infolist():
+        if i.compress_type == 0 and i.filename == "resources.arsc":
+            with open(patched, "rb") as f:
+                f.seek(i.header_offset + 26)
+                nl, xl = struct.unpack("<HH", f.read(4))
+            if (i.header_offset + 30 + nl + xl) % 4:
+                sys.exit("VERIFY: resources.arsc not 4-byte aligned")
+    if apk_patch.signing_block(open(patched, "rb").read()) != apk_patch.signing_block(open(orig, "rb").read()):
+        sys.exit("VERIFY: signing block differs")
+    print("VERIFY OK: all original resources unchanged,", len(new_ids), "drawables added")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("settings_apk")
@@ -250,31 +291,39 @@ def main():
     run([aapt2, "link", "-o", unsigned, "--manifest", os.path.join(ov, "AndroidManifest.xml"),
          "-I", framework, "-I", apk, "--package-id", "0x7e", "--allow-reserved-package-id",
          "--no-auto-version", "--no-resource-deduping", "--no-resource-removal", flat])
+    # ---- patch Settings.apk itself ----
     xml_entry = f"res/xml/{SCREEN.split('/')[1]}.xml"
-    patched_apk = unsigned.replace(".apk", "-patched.apk")
-    with zipfile.ZipFile(unsigned) as zin, zipfile.ZipFile(patched_apk, "w") as zout:
-        for item in zin.infolist():
-            blob = zin.read(item.filename)
-            if item.filename == xml_entry:
-                blob, n = patch_dynamic_refs(blob, 0x7e)
-                print(f"patched {n} own references to dynamic references")
-                if n != len(new_icons):
-                    sys.exit(f"expected {len(new_icons)} patched references, got {n}")
-            zout.writestr(item, blob)
-    unsigned = patched_apk
-    sdir = os.path.join(work, "signed")
-    shutil.rmtree(sdir, ignore_errors=True)
-    run(["java", "-jar", signer, "-a", unsigned, "-o", sdir, "--allowResign"])
-    signed = glob.glob(os.path.join(sdir, "*.apk"))[0]
+    donor = zipfile.ZipFile(unsigned)
+    ddump = parse_dump(subprocess.check_output([aapt2, "dump", "resources", unsigned], text=True))
+    files = [(slot_of[k], f"res/drawable/{slot_of[k]}.xml") for k in new_icons]
+    src = open(apk, "rb").read()
+    with zipfile.ZipFile(apk) as zapk:
+        arsc = zapk.read("resources.arsc")
+        names_in_apk = set(zapk.namelist())
+    for _, path in files:
+        if path in names_in_apk:
+            sys.exit(f"{path} already exists in Settings.apk")
+    new_arsc, new_ids = apk_patch.arsc_add_files(arsc, "drawable", files)
+    mapping = {ddump["drawable/" + n][0]: new_ids[n] for n, _ in files}
+    new_xml, n = apk_patch.xml_retarget_refs(donor.read(xml_entry), mapping)
+    if n != len(new_icons):
+        sys.exit(f"expected {len(new_icons)} retargeted icon references, got {n}")
+    patched = apk_patch.rebuild_zip(
+        src,
+        replace={"resources.arsc": new_arsc, xml_entry: new_xml},
+        add=[(path, donor.read(path)) for _, path in files])
+    patched_path = os.path.join(work, "Settings.apk")
+    open(patched_path, "wb").write(patched)
+    verify(aapt2, apk, patched_path, new_ids, xml_entry)
+    patched_md5 = hashlib.md5(patched).hexdigest()
 
     # ---- module ----
     mod = os.path.join(work, "module")
     shutil.rmtree(mod, ignore_errors=True)
     shutil.copytree(os.path.join(HERE, "module"), mod)
-    odir = os.path.join(mod, "system", "product", "overlay")
-    os.makedirs(odir)
-    shutil.copy(signed, os.path.join(odir, OVERLAY_APK))
+    shutil.copy(patched_path, os.path.join(mod, "Settings.apk"))
     open(os.path.join(mod, "settings_md5"), "w").write(md5 + "\n")
+    open(os.path.join(mod, "patched_md5"), "w").write(patched_md5 + "\n")
     prop = open(os.path.join(mod, "module.prop")).read()
     prop = prop.replace("@VERSION@", VERSION).replace("@VERSION_CODE@", str(VERSION_CODE))
     open(os.path.join(mod, "module.prop"), "w").write(prop)
@@ -282,8 +331,8 @@ def main():
     if os.path.exists(zpath):
         os.remove(zpath)
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
-        for root, _, files in os.walk(mod):
-            for f in files:
+        for root, _, fl in os.walk(mod):
+            for f in fl:
                 full = os.path.join(root, f)
                 z.write(full, os.path.relpath(full, mod))
     print("\nicons:", len(wanted), "(new:", len(new_icons), ")")
