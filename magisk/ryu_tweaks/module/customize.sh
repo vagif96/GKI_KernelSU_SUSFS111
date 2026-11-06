@@ -8,7 +8,15 @@ for d in "$MODPATH"/parts/*; do
   name=$(basename "$d")
   real=$(cat "$d/target_path" 2>/dev/null)
   if [ ! -f "$real" ]; then ui_print "! $name: target not found, skipped"; touch "$d/off"; continue; fi
-  if [ "$(file_md5 "$real")" != "$(cat "$d/orig_md5")" ]; then
+  have=$(file_md5 "$real")
+  # the file may still be bind-mounted by an installed (older) version of this module
+  prev=""
+  for pm in /data/adb/modules/ryu_tweaks/parts/$name/patched_md5 \
+            /data/adb/modules/ryu_bt_volume/patched_md5 /data/adb/modules/ryu_other_settings_icons/patched_md5; do
+    [ -f "$pm" ] && prev="$prev $(cat "$pm")"
+  done
+  case " $prev " in *" $have "*) ui_print "- $name: currently patched by the installed version";; esac
+  if [ "$have" != "$(cat "$d/orig_md5")" ] && ! echo " $prev " | grep -q " $have "; then
     ui_print "! $name: built for another firmware, skipped"; touch "$d/off"; continue
   fi
   [ "$(file_md5 "$d/file")" = "$(cat "$d/patched_md5")" ] || abort "! $name: damaged module zip"
