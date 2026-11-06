@@ -17,8 +17,9 @@ How it works
   integrity of APKs on system partitions (ProjectRyu's own Settings.apk already
   fails verification), it only reads the certificates, so the platform
   signature / android.uid.system stays intact.
-* The module mounts the patched APK over the original file only; SELinux
-  labels are copied from the real files at install time.
+* post-fs-data.sh bind-mounts the patched APK over the original file itself
+  (KernelSU Next 3.x does not mount module system/ folders without a
+  metamodule); the SELinux label is copied from the real file.
 
 The module must be rebuilt for every firmware: the installer refuses a
 different Settings.apk and the module disables itself after an update.
@@ -49,8 +50,8 @@ OVERLAY_PKG = "com.ryu.settings.othericons.overlay"
 OVERLAY_APK = "RyuOtherSettingsIcons.apk"
 SCREEN = "xml/other_personal_settings"
 MODULE_ID = "ryu_other_settings_icons"
-VERSION = "2.0"
-VERSION_CODE = 2
+VERSION = "3.0"
+VERSION_CODE = 3
 
 APKTOOL_URL = "https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar"
 SIGNER_URL = "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
@@ -321,7 +322,8 @@ def main():
     mod = os.path.join(work, "module")
     shutil.rmtree(mod, ignore_errors=True)
     shutil.copytree(os.path.join(HERE, "module"), mod)
-    shutil.copy(patched_path, os.path.join(mod, "Settings.apk"))
+    os.makedirs(os.path.join(mod, "apk"))
+    shutil.copy(patched_path, os.path.join(mod, "apk", "Settings.apk"))
     open(os.path.join(mod, "settings_md5"), "w").write(md5 + "\n")
     open(os.path.join(mod, "patched_md5"), "w").write(patched_md5 + "\n")
     prop = open(os.path.join(mod, "module.prop")).read()

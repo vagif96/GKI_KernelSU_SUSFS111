@@ -17,8 +17,10 @@ Version 2 patches **Settings.apk itself** (no RRO overlay, nothing is added to
 * all other files (dex included) are copied byte-for-byte, and the original
   signing block is kept, so the platform signature stays the same.
 
-The module mounts only this one file over the original Settings.apk. SELinux
-labels are copied from the real files during installation.
+`post-fs-data.sh` bind-mounts this one file over the original Settings.apk
+itself (no dependency on the KernelSU / metamodule mount; result in
+`/data/adb/modules/ryu_other_settings_icons/boot.log`). The SELinux label is
+copied from the real file.
 
 Glyphs come from [Material Design Icons](https://pictogrammers.com/library/mdi/)
 (`@mdi/js`, Apache-2.0).
@@ -39,7 +41,7 @@ several times during boot) to disable all modules.
 su -c 'cp $(pm path com.android.settings | sed "s/package://") /sdcard/Settings.apk'
 # on a PC with java, node/npm, curl:
 python3 build.py /path/to/Settings.apk
-# -> out/ryu_other_settings_icons-v2.0-<md5>.zip
+# -> out/ryu_other_settings_icons-v3.0-<md5>.zip
 ```
 
 Icons and colours per entry are in `icons.py`.

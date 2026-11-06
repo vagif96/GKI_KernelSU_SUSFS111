@@ -11,25 +11,14 @@ if [ "$have" != "$want" ]; then
   ui_print "! expected $want, found $have"
   abort "! Installation aborted (nothing was changed)"
 fi
+[ "$(file_md5 "$MODPATH/apk/Settings.apk")" = "$(cat "$MODPATH/patched_md5")" ] || abort "! Damaged module zip"
 
-# module path that mirrors the real one
-case "$real" in
-  /system/*) dst="$MODPATH$real" ;;
-  *)         dst="$MODPATH/system$real" ;;
-esac
-mkdir -p "$(dirname "$dst")"
-mv "$MODPATH/Settings.apk" "$dst"
-set_perm_recursive "$MODPATH/system" 0 0 0755 0644
-
-# copy SELinux labels from the real files/dirs (wrong labels make whole dirs unreadable)
-ctx_of() { ls -Zd "$1" 2>/dev/null | awk '{print $1}'; }
-r="$real"; m="$dst"
-while :; do
-  c=$(ctx_of "$r")
-  [ -n "$c" ] && [ "$c" != "?" ] && chcon "$c" "$m"
-  r=$(dirname "$r"); m=$(dirname "$m")
-  [ "$m" = "$MODPATH" ] || [ "$r" = "/" ] && break
-done
-ui_print "- Label: $(ls -Z "$dst" | awk '{print $1}')"
+# The module bind-mounts the APK itself in post-fs-data.sh (does not depend on
+# the KernelSU / metamodule mount), so there is no system/ folder here.
+echo "$real" > "$MODPATH/target_path"
+set_perm_recursive "$MODPATH/apk" 0 0 0755 0644
+ctx=$(ls -Z "$real" | awk '{print $1}')
+[ -n "$ctx" ] && [ "$ctx" != "?" ] && chcon "$ctx" "$MODPATH/apk/Settings.apk"
+ui_print "- Label: $(ls -Z "$MODPATH/apk/Settings.apk" | awk '{print $1}')"
 ui_print "- OK. Reboot to apply."
 ui_print "- If Settings misbehaves: remove the module in KernelSU and reboot."
