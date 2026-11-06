@@ -1,0 +1,6 @@
+id=ryu_bt_volume
+name=Ryu BT Volume (no EU limit)
+version=v@VERSION@
+versionCode=@VERSION_CODE@
+author=vagif96
+description=Removes the EU (CE) music volume curves for Bluetooth/headphones on HyperOS 3 (Xiaomi non-EU Bluetooth curve, no gain above 0 dB). Built for one firmware; disables itself after an update.
