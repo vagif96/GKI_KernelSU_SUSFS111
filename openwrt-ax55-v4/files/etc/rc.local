@@ -1,0 +1,40 @@
+# Test image only: bring up Wi-Fi once on first boot, so the router can
+# still be reached if the wired switch is not recognised (some AX55 boards
+# carry an RTL8367D-family switch that rtl8365mb does not support yet).
+#
+#   SSID:     OpenWrt-AX55v4-test
+#   Password: ax55v4test
+#   Address:  http://192.168.1.1 (user root, no password)
+#
+# Runs in the background so it does not hold up the boot.
+
+(
+	[ -f /etc/ax55-test-wifi.done ] && exit 0
+
+	# ath11k loads its firmware asynchronously; wait for both radios
+	i=0
+	while [ "$(ls /sys/class/ieee80211 2>/dev/null | wc -l)" -lt 2 ] && [ $i -lt 90 ]; do
+		sleep 2
+		i=$((i + 1))
+	done
+
+	[ -n "$(uci -q get wireless.radio0)" ] || wifi config
+
+	for r in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
+		uci -q set wireless.$r.disabled=0
+	done
+	for i in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"); do
+		uci -q set wireless.$i.ssid='OpenWrt-AX55v4-test'
+		uci -q set wireless.$i.encryption='psk2'
+		uci -q set wireless.$i.key='ax55v4test'
+		uci -q set wireless.$i.network='lan'
+		uci -q set wireless.$i.mode='ap'
+	done
+	uci commit wireless
+	wifi reload
+
+	logger -t ax55-test "test Wi-Fi enabled (SSID OpenWrt-AX55v4-test)"
+	touch /etc/ax55-test-wifi.done
+) >/dev/null 2>&1 &
+
+exit 0

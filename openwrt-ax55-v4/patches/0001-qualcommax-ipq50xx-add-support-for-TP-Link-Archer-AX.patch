@@ -1,0 +1,544 @@
+From 1eb2474ec95029e3d0d8a36463348b894f133e60 Mon Sep 17 00:00:00 2001
+From: vagif96 <a.vaqif96@gmail.com>
+Date: Sat, 7 Nov 2026 19:05:59 +0000
+Subject: [PATCH] qualcommax: ipq50xx: add support for TP-Link Archer AX55 v4
+
+The Archer AX55 v4 is the same board as the Archer AX55 v1. Checked
+against the stock v4 firmware (1.1.3 Build 20251030 rel.63052):
+
+- SoC: IPQ5018 (MP03.3 reference design, same DDR CDT)
+- NAND: 128 MiB, identical partition table (rootfs/rootfs_1/tp_data)
+- Switch: RTL8367S over a 2.5G HSGMII link, reset on GPIO33
+- GPIOs: buttons 25/31, LEDs 10/11/13/18/22/38/39, USB VBUS 27
+- Wi-Fi: IPQ5018 2.4 GHz + QCN6122 5 GHz, board IDs 0x24/0x60,
+  pre-cal in 0:ART at 0x1000/0x26800
+
+The only difference is retuned Wi-Fi board data, so v4 has its own
+calibration variant and ipq-wifi package, with board-2.bin files built
+from the stock bdwlan.b24 and qcn6122/bdwlan.b60.
+
+Not yet tested on hardware.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EFTv5G5EUAjQfjYfRG5dBt
+---
+ .../uboot-envtools/files/qualcommax_ipq50xx   |   1 +
+ package/firmware/ipq-wifi/Makefile            |   9 ++++++
+ .../files/board-tplink_archer-ax55-v4.ipq5018 | Bin 0 -> 131188 bytes
+ .../files/board-tplink_archer-ax55-v4.qcn6122 | Bin 0 -> 131188 bytes
+ .../qualcommax/dts/ipq5018-archer-ax55-v4.dts |  29 ++++++++++++++++++
+ target/linux/qualcommax/image/ipq50xx.mk      |  25 +++++++++++++++
+ .../ipq50xx/base-files/etc/board.d/01_leds    |   3 +-
+ .../ipq50xx/base-files/etc/board.d/02_network |   4 ++-
+ .../etc/hotplug.d/firmware/11-ath11k-caldata  |   6 ++--
+ .../base-files/lib/preinit/09_mount_tp_data   |   2 +-
+ .../base-files/lib/upgrade/platform.sh        |   1 +
+ 11 files changed, 75 insertions(+), 5 deletions(-)
+ create mode 100644 package/firmware/ipq-wifi/files/board-tplink_archer-ax55-v4.ipq5018
+ create mode 100644 package/firmware/ipq-wifi/files/board-tplink_archer-ax55-v4.qcn6122
+ create mode 100644 target/linux/qualcommax/dts/ipq5018-archer-ax55-v4.dts
+
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq50xx b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq50xx
+index 7d49a65..fff19bd 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq50xx
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq50xx
+@@ -23,6 +23,7 @@ zyxel,scr50axe)
+ 	;;
+ glinet,gl-b3000|\
+ tplink,archer-ax55-v1|\
++tplink,archer-ax55-v4|\
+ tplink,eap650-outdoor-v1)
+ 	ubootenv_add_mtd "0:APPSBLENV" "0x0" "0x40000" "0x20000"
+ 	;;
+diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
+index a1eb14e..62a817b 100644
+--- a/package/firmware/ipq-wifi/Makefile
++++ b/package/firmware/ipq-wifi/Makefile
+@@ -13,6 +13,13 @@ PKG_FLAGS:=nonshared
+ 
+ include $(INCLUDE_DIR)/package.mk
+ 
++# Board files that are not in qca-wireless.git yet (./files/board-*)
++# are copied in next to the fetched ones.
++define Build/Prepare
++	$(call Build/Prepare/Default)
++	$(if $(wildcard ./files/board-*),$(CP) ./files/board-* $(PKG_BUILD_DIR)/)
++endef
++
+ define Build/Compile
+ endef
+ 
+@@ -94,6 +101,7 @@ ALLWIFIBOARDS:= \
+ 	spectrum_sax1v1k \
+ 	tcl_linkhub-hh500v \
+ 	tplink_archer-ax55-v1 \
++	tplink_archer-ax55-v4 \
+ 	tplink_archer-c59-v1 \
+ 	tplink_archer-c6-v2 \
+ 	tplink_archer-c60-v1 \
+@@ -309,6 +317,7 @@ $(eval $(call generate-ipq-wifi-package,skspruce_wia3300-20,SKSpruce WIA3300-20)
+ $(eval $(call generate-ipq-wifi-package,spectrum_sax1v1k,Spectrum SAX1V1K))
+ $(eval $(call generate-ipq-wifi-package,tcl_linkhub-hh500v,TCL LINKHUB HH500V))
+ $(eval $(call generate-ipq-wifi-package,tplink_archer-ax55-v1,TP-Link Archer AX55 v1))
++$(eval $(call generate-ipq-wifi-package,tplink_archer-ax55-v4,TP-Link Archer AX55 v4))
+ $(eval $(call generate-ipq-wifi-package,tplink_archer-c59-v1,TP-Link Archer C59 V1))
+ $(eval $(call generate-ipq-wifi-package,tplink_archer-c6-v2,TP-Link Archer C6 V2))
+ $(eval $(call generate-ipq-wifi-package,tplink_archer-c60-v1,TP-Link Archer C60 V1))
+diff --git a/package/firmware/ipq-wifi/files/board-tplink_archer-ax55-v4.ipq5018 b/package/firmware/ipq-wifi/files/board-tplink_archer-ax55-v4.ipq5018
+new file mode 100644
+index 0000000000000000000000000000000000000000..660bbfd32b81fe9f714b31ce50f292912b7f66de
+GIT binary patch
+literal 131188
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/package/firmware/ipq-wifi/files/board-tplink_archer-ax55-v4.qcn6122 b/package/firmware/ipq-wifi/files/board-tplink_archer-ax55-v4.qcn6122
+new file mode 100644
+index 0000000000000000000000000000000000000000..7df5811c514c04f1d416e24572518c1ba647af6b
+GIT binary patch
+literal 131188
+zcmeI53wT^rwa3>vGkLXXGf7V-&7*1Fo%CfIS}3JJChs<xbec@tG*&1jN`aC~D`FLd
+zUKByvEBINSS1^TAu{=eD@)lI&brluyUi=h9P~>{O`1t&K{nXt5TIZb1<kd`?CZx$a
+zXH90W{a9zM-`;2MbLLE^Yiojwf|150OPUr{uL-u+lC!mwDXBXA-SUZ#pL*8TEep3_
+zaPFeBx1M|9qH{Y>tq^U?znrzBlhw*)%NAaI){b+}>bmIENO)26xn1Wk3hp?2>qmDi
+z3brp>w&>!euw#ft6YpNHBzIkqKHE#4%QKd)m%kh2Z@c{6D1STT?}w!}{%l^ysaNqT
+zNa2*bT?f-9o3{_)X7_*J+&^RL=@~}4vCKHlIK^0DoNk<i)Jew4#!CEMiu_8$XXH8i
+zO1$Uv@=T`TTG}iPGK|D1R*xaW$V!i9X-Wy$1WdX|66@ylCE_7Z-;5(@_AG@8`;JiQ
+z7!`Tw)!xG$Ba;)#Ow|vFuKpp>f4)Yv`oG}XuZSLa2ea<aiK>1<^yXWbci$L0mk;c}
+zbN_)m#?Jmkvuw;x@f_&|e=EnsXD{X1>+#VY%rFjP(m#B3jgOyJhS9qiQofaxHK^xa
+z;}znUZc1R%5J;d38TtmUv5mQu=G+=gn)t>dkVM)#sjn5rf|=SpIs!>F+g_RsT6lR+
+zPtWCfvZeje<7}OW52vLS7qfN4o5+PnccA02RWhZPvD-aI*ysL;DDO$4+1*5$pC?M&
+zNR)aSQF1;$Rrr0+uu&KNlxXhLM7ehoWnD>>aVFYVpuG?6e=&UfPkjpQ;Y02r+Xrix
+z<HPB&F&8%eXLuWhxaP=z6gIv_<VX8-jsaJX$r)(>#_;XMhaaOoY|P$AWc@3Az~?Th
+zRj^S28-EzyM&VE3!xKa~x5J0e!iSHb{W7%oqy1aMx9{TvYz*+>e}}hGh<leg;FyEH
+z@S`t%%waiv$c7KU8NPiVA6yO{F&yIXp#Xg`=P{z}Zj2}Ng^xL|fDgIw;kR-6Fv{^z
+zfcA49hYyG$6MgC11RqX;4><MBcjNPcbW;LKKnV;%p!+MGyMvbo&d<i&;%?nv?7S>^
+zVc?AHkefr){qLRE1TP7kmyLPU-MX(uy)M*iadS}bmd-E0-g()WFWs&Cy3WgCZ*%q<
+zH^-^h-`<xxcLlejUO1+n>tF0~ztnj}@Z*8Avs+{8-P*Y)_?f`AK5=}x^RvN=P_Hdo
+zPgA2K;9i6ET6w=WrHLs{V5JqdI;}m{L)P=wrJ4IP4`sfb`DW%{GV}bk{&xR%TtOar
+zoA)A75gsSZ*^O(S3vlg+^L7@lcYGy8Gkr&H%cW&65f$Ez_IsT65wu^4_PBePiEHTL
+zHok5YAK1n<N9V)5m*K;~em-yvrSZkk#|Jl#SPp5!MS&RLgK*^b+i*YQaL8B)AL3}=
+z>jTHZ9L_^uV6L^mGGhU3%#6ba^hJ@wA;<B-0*8zM+RqrieXkF0U${P;8ov(#JPRpC
+z`+US8K5z`K52^9_5cm%}j{M!QficM}g~NQr5r++K&pyokH?&6#S?J45=7=%ri*rl{
+zUhWqMY*@G#5th@3k3)R8XAlnaM&QFsL?s-@9y^ZNc#1D^U|h!&hs1EuX@7n{4(Y?k
+zz~dp{`mh`KxLvr%MPKy#5QmK;`VePdls`{Y`gJ@*V;{D`2kuWEQ<$TCarjXFBHG^#
+z4%gUYvNr}E4{@|-4&~oJf)8=blYM+RKZfH7eJDd51&Ct+hj@H=A<7{a=habh_#Wnb
+zj4A00jstz+$7epXcudAIN0qY=Xg~K0h{5%N=a-Ricoy^Ry$%QXki8y0z((9Ypf7u4
+z;PDhYrsLo!<KY?jfb*OCB9DDw4j7ZO@M)oM#_;D>`E&4r`*L?oU-BHqV>-_Df?1Y)
+z-8sJzM;7MVOlHY*%&a(kco}mX`hw?bUbA@Zmw9$!{A*VC^IcDdzgfB8`h4_w-QVka
+zG<<($H-8T0ZiCkQuGIUgb%k3C_b4yG-b4NDalQL0`_}t@*AqDIoz_(`ZNJm?Nci5$
+z+pJwNc`tN51$zf9#OQ9_-|0Fuz@B~F!R*~?UGBDof6sM29{xt<J`11Ixm)+MT@Q!v
+zuKbGi88-*@++*yD$$Pr%q43u$Z?-Ot$s5e)r@Ou>^)4Auudgp$@2<+5tWU?(dln4t
+zsl3&?EGBO-d(U)zOMLEI??JJL`Oe+CzYU)cR^HOb=cl?J41cZiMk}`7lU?6H-c5b-
+zp6GfYd}rki)+b$S;KF$a`n7$$>;CZm%ImF*W9mKDb>D!zN4xF~-%+_Y*4|2Mr`2se
+zW$l-1-gf_${%8Drzcl1_c<85a<@4t+Sh#5M;ty3|zK=;8LmJZpB``G!xSvT3^}g^G
+zoI_7xjr$s|<*&p&%}21#R$_gzu(rH?g!9wEx!@;QUmwHzhUXcDS7VJm1MAxfSlh6+
+zrpEbfXu+$FjXSW;?y_yn=JgTl>&!TwN0k2v{y%{=67A=reeRi9Bk^1&1K(jujq`cL
+z0@#>`=PD)p5C_)CJm$dHu83o19M6X4;~7~QI240J0oJ-)aPTihd)(Ql#`#=kKKp>a
+zC_!Hopf7Si3>)Z+3|u43{LAotQI5VSMGQsV;P5$ILwBJ43S47MhY$Zfe0#oLlKuqC
+zk^}GoYiBOoSOOn#4>0r3!`omV%AN)X#4s1_b2g&=$?#zse0Xp8_Ts~jaX-Tx5XaH<
+zMSwY=eGz=f2M7MV)jGkx)=G_oBm1zBeRvdhcwFQ9XwGJghZDge8618$d>rK%)1?>>
+zMf>3c+UJ}JAFy8eeBki@@a<h6_}nZ7hoY<C!x``aW6Hvqni<EK3Sc~yK906`!UtTt
+zWuq@F^d;X*rT#HKALe6zm<Jmrh@*ErAPyc6slOiHhHwDKBAlD~yTAc4@I3%uJEz8R
+zZp(Op4?G@9(VvCjz~`pSF{!W-#~f3RzAQugVvK1SlRTzRh7Th-FW84C;R9?G;@r&J
+z1RpBFfo=Re4i4-C+K<Ku8Iw3SOVJmF7}t4-Ba6>XKDS<v!w1A5^Ca5O#dyeR2M0Vm
+z_NAbG9AjF><PV+m0%Nie{V8J-=Y^GtG5OB$KDcvSG1|)<2aYnwS@0o_^+v`6SO%VU
+z<_C8?@LU`3c))of9B^LrayV&(9AG2BeE}OX9x%uB_C*}yLC!0T2bt^9m$7qwyc|e3
+zB{0Pa^uMm1;y5UU0!hrk^d=-vOP!hKOV5~PW%{#bXXoVR&B>ozP*_xquh8`*4YS!C
+zEh?Z2T258eNMUNH&9s#+q@A>juBPkgChDfU=m9!J-=^p3m45pnl<q>C3QDGdU&!h1
+z3<k30ASI<GvGRTg>KnMqBJw732)=;<l$4gu3zQEV!(Xu+B~vy9Xa%jNHrhlVqfgM~
+zw43(A_x<?SIS<ie^enwVKcv^_=k#Wuy$3Pfg*dk&^5x(lF4<U|zujHoN-SI0tc(m_
+zdfLnxGq3_-J6zuz1N(3F#cz9$k1!@yKa`gT0%c`xUzEIG-W!9&q<@Z@KuJk4q_n88
+zu(+tOsIZ@kYk*<OOG`^2Xj@QRi1z(dT!V~pc{K2UM3bXW<;R+^Pn_7CaZ4Ni)cpLS
+zl9IB3WzEjX$;<DnmF2+`e9<@|A%VQub(<^%rjfVLq+UGCHd*36R&l&J%I#SBp>`$*
+zfhD8dCI<zLLJ25=@gy*v9*X%U$5wkIdF$M=ncwlYssDRNdn8g{@8<T`nwzVuW6Nr5
+zhtisxtEytlhPD}r#A`DWiQnd6$J;ud_$S!0I%V6u$$9JO|K1*H#pdRYr?&Zwj*duc
+zIJ|s0AN@#L=jKfqkdxR?j2Y<x1nTxg|My89|1s&`BaNWGWk)@pw4aW_dDyovj--vI
+zpN`QqY$hg6OG&{KMcK^6<muC<;rXO&o}^gKo0O6|eL9|>$~NBZoWtsy5>Nt4KnW-T
+zC2)KZNTpZyu*V(~zx!f(48!9wCQ1a`Qf_mvfkx%h(xs<kv;T5xvTTI@!c(;g)L+|=
+zNsk4V2GB+J-^tQf9EXYi!V5BS`fOAu)&y<5E#=sc!^t-qC)1fV{;_y)F5`t$S<mIM
+zoCYpVxg=%p2(AK3DoRdwU*kV2rp^(^vd_oE_C)I`xt7CxGLf$5#-ks``xwXS+MsB0
+z5r$Cg--$M&)SnNEfS$|ab5@V^+F&TJ^5^GcsKoyLphk`!ccKv(YRqW<#3V4$#*g|l
+zaR^Mz5j&1vO|Z|4$1(D_4#mGOxyRa$U)71L`f*cfaYdlt!;gVE6Xz^dPn3WXPy%B|
+zK%c`MH%pf~8V7-?eBGi~GGjMSs%0gh1eAahPy$Lo2`B+2pacdI(C-4qag(Z5jvE5?
+zR+n{yb&3Cu<McU5px^V3;q-xLwB{%QC7=Y9fD%vwN<axHfvH2li|>iyWqS4BwjDS3
+zZ0hLH1Ujs1C)Ay6Kz@(Fo==8KPo3FDBUJ)QKnW-TC7=Yxf<U5a8hDwBreP#{%n9>*
+zK|^1$jjkjSf#PK*CL-RXDG+Zm;!Q@p$%r>)^2d9H^(_9U#DQCEer$SRO*^NojL)`#
+zf5+k+oXR!_61H=uGLx~0T{({h)qysLnol(U_#!Z{XEjF&D1pgJ;P{%I)Z58A4mB<%
+zFcApo3^P6iCPH7U5AhR7!}lNXGSl??594!!=uyU$z{*Mat42hDoW+a#p4IW>^lhP<
+z5>Nt4KnW-TC7=Y9fD%vwO5j)$@Zs|WyiA{do-n5OxoUiT2psRf4^T8ezt0B;!|BIz
+zE>K%aKnW-TC7=Y9fD%vwO5k`SkdFIVyv%gHpB<kYE<MVa66mlFPN-i9D9VpM)*dQ-
+zyv-TvuM$uKN<axH0VOc82#o2)l^Rz9<4j-%<$3v#JrAT>rni%}rCgc9x<Mx0c;mi(
+zoIZ4j;!5}YAl34kowU<Bl$q?m+0Qnvzkc8Cms~>h@V5x*+xKz$TMtXRThfnkI$FoI
+zadK96_W$KPlY2CNu+O?F0VObc0yD`wd-PVu$HJUc-uYOoXYk%P74_lN8N5gJXliW=
+z??mpqTk^RS-d*j6MBdwzc(?PeO5)uuC;F53Pcp0i%=<HWkCsg2l=7R%y)$)vdxd!4
+z+Gi&^^Pjv|^zeR@vlGpiJ(FVh<CWaT9^UWmvkw(Z8}Z&ZdZJhhul3mbP!=>_2`B+2
+zpahh_2TkCs_|3wd&MSUj?CS*ky1-ru<8SM(l}m|tdo{IJ&ym>Bx=KI^C;=s)1eAah
+zPy$L|au7%(Z}Q}bM59mwN<axH0VSXWMoPd(+eX@CRQ1!TL)u?!ruF_`Jb&vMmC2aK
+z8FZ<9yWvWFTj^f^Gyb3Yf9L;)-!@<V0#V69qPe??au9S@D^cdDL>Xm7zF9FwhDesb
+zOjL~abFLxEKA*_nMr5r-`vpWZ(}rl&FZ)>dP;$5917aAp4~T;~SSv=xp~&Un_%Lgv
+z9A50#7tC@5J_KH}`y!wF;%I$%KE?-!L*{8C-~b=EFJgTd@p$+?Q7Kr;m^_bY_WBWy
+zNr$71Nq0P)f*8s%CTI2=d_$=75Jw?=$h!tCFTj|J5Y2)OUomW?578(ly9_=Q-b0kT
+z8~($GOtjCyc<=>?QV0E3PE2D>PB;SHk9FM_-d}mW^~tDfPTpSY69e)FuXl03dUy7-
+z_juR+;r@9~bUhG0P<ey3Gp6m6UEdgxXScnfkAH);b&nBiZ?JlHynFlD8{`;KuQa6u
+zlz<XY0!ly$C;=s)1eAahPy$Lo2`B+2FjWc6a=ulu`Ms%1K;u>dN<axH0VObX30UOC
+z(@!EVokSF@X9;veKTLSA8f<3~Jz2_|DcEf5sr>DT+71>e_Yoe72isUgx1@e81#4}6
+zugUgTu}FEI*l(a<gRK|P1t@Q2k@6F$8hVID^h{~Lfr1-sy@c@4H@J>P$^&w|2n8dy
+zK9?#`-oYZ}3;B4}Z7iZ!&_?KuETUHuzFbgU%Od(xDuiCmBKn1Fzj`AJ^a5HgdL32Q
+z+2s+!7c{CnSfu_+=20DD5xq+4N2uEIua@wm4%KT|q`Y3rgH#=~^=3L9<*h7IzFF$G
+zP<4x~cS`*Rs&@FT_i%jmEK>g>E^lgN5q&4?H6a$!FC`0lkVW*XnNQP37SZ>xUQ^E!
+z-~qCi+ed0yr2HoO5hc_#6C}`$0rM5wfch;gQhvL%Z>Jh({2Ua04b?dD9umEYYMSi&
+zPl(=1HBP*{3_kuU7P0p<AHT7cMf6$bnJC}DBKmi^yk;Yd=r4)hK{ZZ)yux~I6N{9;
+zN<Qcz7SUhh{;FNWBKqsB*VV9yUg<dzdIO8-zhr;g*0YHIJGNg}$0GV~MUPOO)8Bt!
+zy}pS>%HI=x4b?lx`>W`ysNRY9Z=$zSy%X<0S#PLkk@ltmJzUQsx|j7xJ&Wk6tT)uL
+zh;Ff7TgM`L0rPEWWD&hY>aU^(=lBanZ>0w3_!XizQ-gE<FEzlYp_WD3FPHK#HH2+_
+zrIfFu2Iu^&lJW>OI6O}Guzw9K(!SAH2Yn-p=*`@|F~TBxi-GgKF~lNznC-0(vWOnx
+zcp6(+L~j?pi5eZ=o49`CIu<G4%=)S}7STJ6?a*6TMBi!zq1Unm!WjP-O8vF8YOP&<
+zk?3`_%HbL0cvgj2r2S5#33@Y&=$A_U2(5DB`JC}Kek>-$BIQ-wesvv-=+_yT|5mSI
+z5&etC)i^&pSVZ4z%!6LXBKj>xBYB%z2_om?ZG60@4J=ZA59`hASwug;e449SL_a9y
+zZPe`Wcv$pR)a;ChL!w8h+427|(brM4!}BS&7h1z2_U3Usp(Ym5pX2(W4J@L+Xk<g*
+z$Rhd=j1NO!&m#J3Qa?f==Xi}K#zUx)Mao~7^0gFl`s0_Pw^GO%uWyRJjzW%q_w)I)
+zF~TD4-!?G6hT2&~Z(#fNAr{g9B<*V{<c#m%i(W$^XFhme;%%XjGhY5I<#iNt`r|L6
+zw^7L9dDy`G5el-1{jI#-ghDK$d(C%<T7oR1r<%Wp9%d2U$Ln89GmGdMvL3cj&^dmd
+zl-E#;<KKJ}@wIfYNc|H{@NH>e5xrJ;hAHIOU(9;TDi$eUA@<f$i^K0U6X#z`J&TlA
+zOZggVar&EBUlU@H^3^8J=Wr8?=&RU%cms>*Ys}w353-29-o*F`H?WA_F8W3aJL6-M
+z=yeo!_-+=xk;2Y+*viKbH?v6lZK6jg?DY4=a{N{bJLBWiCcb#KHpn9NFXQ^Hbu6M^
+zA^I9>b>jQ1iS@m89Sh0}=<|I1)(tFDe-GEMZe|hvi>$XbvWWg=Uay*3SVX^p_2wED
+z(QoAXp?Vh4Z(%(gViEl|*4Njth`xi*uMKT1vOeD~#|u%LQ~v<_*A`)s`UlM=(1R?Z
+z-)Ca}X=`B-{Q+*@+QuUKQ_{YH+MNFIi~V+LbIzBiMQ@@ur+=RjeHFDi<L5bU-w|XH
+zd#`eNT^oz&Z%h4FYIFMII=<d%Zeo%0cX_<Et!5GZeW_nZZSMKSdQBsXl;6hdbz}pJ
+z=+z#aUy%+L(f`i=L>gH{C*~JvU=e<)eEk%Out>SZ>wTn!MfBNHzm+16zj;!>h9XXX
+z6tKRofko<<c<=?ybwL*B1?2N!z7E#0Ncjrb^E6ZwMCR*8kDrWnZ3Gd$&h(>wh(+pm
+zcnYC!WD$K6`?s!xMf4JmZ~ZzJ(a-P{L9b&G{o7LBLhBI^uV<|u@LIo$#kR-u<N5{`
+z(YML?s;3Rkc>E;m8|zr4{AK3fv4KVOtBqe_y$Z94et#P4OP0Ah4yoH167Ue2J~Aks
+z46^{gepyJSSwv>S3i9Ae)q~Z*laPVCyjhfhJEug`qD1mj5@k~gW`b#$ji+P9nrWU$
+zX=VlaFx#b@r%{GkLbJ?Lv??RZ3{a*ykNlW9voM>?Hdj-&*+e;JE9GLg&rPVKJaawe
+zB?Kuiv6|*!#mP56LUYYCsK9Kb0&fi!B%Mix<{B!ZwNz|&P>H#LO3jT_W?o41%nN8<
+z!fz>%@FoQkw^Mn-J2W4w-~#h4T9|MJE%M$>i#=D<V(%B|L*AcJh4&3w;{6p>dN<S3
+zX=mZJ1+TN|gp`ls)k!BLe~gwUpNrQyv@~TaUgzPp4X+eRGT)<AdY5M4E@rxk-yrSL
+z*We7cq}-Ll_ka0#xoO-v_NGfD{h-vb^X;@<-%iKY$#Uv*U4Gr1a&L--@oJ|Z>`fm`
+zc?#(&;`(;FTIxU@c3V8_vRSVEW+#o=lMc*!t2e*Wy29dlkiRzWrukTIn%lc+j>S#$
+zKiY898PPP(r`~+iwc~Q*`Y4aB!*`#q9n-e?W2@WYP-$@*-%-cw3Z%o7EF9c4AInX%
+z4{n<Mw9^z*-|joNPShs;O+ZZjsLj~p+CDpNB`!_};7{~e$r2amTNF)$t<>L<xy9d&
+z`g~kFZTGdEwtaKc(K@z$w=MH@)9j~{Hra<AnJr>JHf`6j^K+d#uFr0L`&f3JoESUy
+zv0D6yh3vMkWio%eKBrxu?KCsok@>9Dv3<yhiMLGBwm){-w*SxG`WgN$e%HR8w(YxV
+zwttTQCDgI|)J^lT+%(&F(>%`Yw9VPgXaC)F)TTYI?0lQ~IsP~JSSJ6IjC1^d?&V;o
+zZQnTUa&XgbeU8QU=aHB?oObO?zKo4?{ExuCJrA7Yzt+#^3-fsiK5)JrV^UVPlYT?|
+zvGZT|mu7Jtj>}DR{n2bbqC_LcfURSBaJCA(8(2@>tqKW~5~s!L2G&(~v+H|Zl|PY0
+z`=nkyEPAv)79o^JJz(7=10NLHo1-VY`muiZ8D^q~Jn6X8k<He<eRMA+WfiWCmdE<*
+zBQp^^+~&mX6KH1El9TN$*1eP%+a6aW(47``c~aK0pkp7=d&!qm;+Bh^7}X6f@8gec
+z&+)IqG|^kr@^GgoTZNgx7SbJ+xZI@VS-m<&u9v)-#m@06Ftb5VU*z~xVNQddlD{D0
+z+G9O+ZbiMTvp*^MW%xHmys>>Rj$gVeR`;gQTisVLZFY2cW6}(#cC>w<E?REz=giJl
+zf!YSOxGKgMxA!_nx7&LtA>%ZshEL+PdJR-1aDRByd;OLE@ml5h=!&-r;X8fK!Ujhd
+zp5CQvY*pg(p#4dXUgc%p-t^NQ9pi!d7sTob<ndRouwCHt1pLbL38z#`3-mvDVLUY2
+z273891~@(srR2Kta5?vH$UQ#F4On!yDvw?MA-8-G9ksn?x?O|o8?@MMPE{DqY`@IO
+z>4ANd(yH7Fta~V}s5iqc(DwlZc%CrvKhkjl&bi(>4daEoz?;B-DG`%nVqy~hCZIl%
+zU4MWv&6p4bZq52>Za2Eq$W5T$bY>6I+1bb^BR8Esll@MPn|AU|BXfGR&U8*YcGAt5
+ze8WwfhSj^o!m4gljerl+a(7J7(9Lc#doRT7a+zABR)y4$x$Y7@x-Qt|(d#Z-$E4$I
+zwjRCA>R;~G(|0AH1O_L-S4tkN;e5Y@Yh<kFGjL~Q;qE6BcY@RKZHDQCH=IDZ(HUg|
+zIi;>B0VSXWjxm8u`uj1qczl`j4;8;J9UDFaoaBo^7VVJ_I_LL%u=`4DkM+EDY39rL
+zfBf40+vS(B{((o~?zX&V@V$q4*KM*8m`$6;G?Z-Orw#Zmsl4K{f`VfABfde8nL`gO
+z9kf6*m4FgZ0!ly$C;=s)1eAahPy$Lo2`B+2pahhF5>Nt4KnW-TC7=Y9fD%vwN<axH
+z0VSXWlz<XY0!ly$C;=s)1eAahPy$Lo2`B+2pahhF5>Nt1K_HjDdlaoEUXwi9Wjl4%
+zRXcy5mKN(^T2%#p>=Zd^@4kEZFu$a9w7&uudk8x{hn9B?%+(wvpahhF5>Nt4KnW-T
+zC7=Y9fD%vwN<axH0VSXWlz<XY0!ly$C;=s)1eAahPy$Lo2`B+2pahhF5>Nt4KnW-T
+zC7=Y9fD%vwN<axH0VSXWlz<XY0!ly$C;=s)1eAahPy$Lo2`B+2pahhF5>Nt4KnW-T
+zC7=Y9fD%vwN<axH0VSXWlz<XY0!ly$D1i@xKt8>m^FbU}kEsNdfD%vwN<axH0VSXW
+ilz<XY0!ly$C;=s)1eAahPy$Lo2`B+2pae!v;Qs-THL&ym
+
+literal 0
+HcmV?d00001
+
+diff --git a/target/linux/qualcommax/dts/ipq5018-archer-ax55-v4.dts b/target/linux/qualcommax/dts/ipq5018-archer-ax55-v4.dts
+new file mode 100644
+index 0000000..8d47368
+--- /dev/null
++++ b/target/linux/qualcommax/dts/ipq5018-archer-ax55-v4.dts
+@@ -0,0 +1,29 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/*
++ * TP-Link Archer AX55 v4
++ *
++ * Same board as the Archer AX55 v1. Checked against the stock v4 firmware
++ * (1.1.3 Build 20251030): same MP03.3 reference design and DDR CDT, same
++ * NAND partition table, same GPIOs (buttons 25/31, LEDs 10/11/13/18/22/38/39,
++ * USB VBUS 27, RTL8367S reset 33), same 2.5G HSGMII link to the RTL8367S,
++ * same Wi-Fi board IDs (0x24/0x60) and same ART calibration offsets.
++ *
++ * The one thing that differs is the Wi-Fi board data (BDF): v4 ships
++ * retuned BDFs, so it gets its own calibration variant.
++ */
++
++#include "ipq5018-archer-ax55-v1.dts"
++
++/ {
++	model = "TP-Link Archer AX55 v4";
++	compatible = "tplink,archer-ax55-v4", "qcom,ipq5018";
++};
++
++&wifi {
++	qcom,calibration-variant = "TP-Link-Archer-AX55-v4";
++};
++
++&wifi1 {
++	qcom,calibration-variant = "TP-Link-Archer-AX55-v4";
++};
+diff --git a/target/linux/qualcommax/image/ipq50xx.mk b/target/linux/qualcommax/image/ipq50xx.mk
+index 3848efa..ed0c491 100644
+--- a/target/linux/qualcommax/image/ipq50xx.mk
++++ b/target/linux/qualcommax/image/ipq50xx.mk
+@@ -359,6 +359,31 @@ endif
+ endef
+ TARGET_DEVICES += tplink_archer-ax55-v1
+ 
++define Device/tplink_archer-ax55-v4
++	$(call Device/FitImageLzma)
++	$(call Device/UbiFit)
++	DEVICE_VENDOR := TP-Link
++	DEVICE_MODEL := Archer AX55
++	DEVICE_VARIANT := v4
++	DEVICE_DTS_CONFIG := config@mp03.3
++	SOC := ipq5018
++	BLOCKSIZE := 128k
++	PAGESIZE := 2048
++	IMAGE_SIZE := 43008k
++	NAND_SIZE := 128m
++	DEVICE_PACKAGES := ath11k-firmware-ipq5018-qcn6122 \
++		ipq-wifi-tplink_archer-ax55-v4 \
++		kmod-dsa-rtl8365mb \
++		kmod-usb-ledtrig-usbport
++ifneq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),)
++ifeq ($(IB),)
++	ARTIFACTS := initramfs-factory.ubi
++	ARTIFACT/initramfs-factory.ubi := append-image-stage initramfs-uImage.itb | ubinize-kernel
++endif
++endif
++endef
++TARGET_DEVICES += tplink_archer-ax55-v4
++
+ define Device/tplink_eap650-outdoor-v1
+ 	$(call Device/FitImage)
+ 	$(call Device/UbiFit)
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/01_leds
+index 6202221..88e40b5 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/01_leds
++++ b/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/01_leds
+@@ -43,7 +43,8 @@ mercusys,mr80x-v2)
+ 	ucidef_set_led_netdev "lan2" "LAN2" "green:lan-2" "lan2" "tx rx link"
+ 	ucidef_set_led_netdev "lan3" "LAN3" "green:lan-3" "lan3" "tx rx link"
+ 	;;
+-tplink,archer-ax55-v1)
++tplink,archer-ax55-v1|\
++tplink,archer-ax55-v4)
+ 	ucidef_set_led_netdev "lan" "LAN" "green:lan" "br-lan"
+ 	ucidef_set_led_netdev "wan" "WAN" "green:wan-online" "wan"
+ 	ucidef_set_led_netdev "wlan2g" "WLAN2G" "green:wlan-2ghz" "phy0-ap0" "link tx rx"
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network
+index 11b7d2d..55099de 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network
+@@ -13,6 +13,7 @@ ipq50xx_setup_interfaces()
+ 	linksys,mr2000|\
+ 	linksys,mr5500|\
+ 	tplink,archer-ax55-v1|\
++	tplink,archer-ax55-v4|\
+ 	zyxel,scr50axe)
+ 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "wan"
+ 		;;
+@@ -76,7 +77,8 @@ ipq50xx_setup_macs()
+ 		[ -n "$lan_mac" ] && ucidef_set_label_macaddr "$lan_mac"
+ 		;;
+ 	mercusys,mr80x-v2|\
+-	tplink,archer-ax55-v1)
++	tplink,archer-ax55-v1|\
++	tplink,archer-ax55-v4)
+ 		# factory MAC is 6 raw bytes in tp_data/default-mac, mounted
+ 		# read-only during preinit (see lib/preinit/09_mount_tp_data)
+ 		label_mac=$(get_mac_binary "/tmp/tp_data/default-mac" 0)
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+index e727079..1cc68ce 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
++++ b/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+@@ -67,7 +67,8 @@ case "$FIRMWARE" in
+ 		[ -n "$label_mac" ] && ath11k_patch_mac "$(macaddr_add "$label_mac" -1)" 0
+ 		ath11k_set_macflag
+ 		;;
+-	tplink,archer-ax55-v1)
++	tplink,archer-ax55-v1|\
++	tplink,archer-ax55-v4)
+ 		caldata_extract "0:ART" 0x1000 0x20000
+ 		label_mac=$(get_mac_binary "/tmp/tp_data/default-mac" 0)
+ 		[ -n "$label_mac" ] && ath11k_patch_mac "$(macaddr_add "$label_mac" 2)" 0
+@@ -156,7 +157,8 @@ case "$FIRMWARE" in
+ 		[ -n "$label_mac" ] && ath11k_patch_mac "$(macaddr_add "$label_mac" -2)" 0
+ 		ath11k_set_macflag
+ 		;;
+-	tplink,archer-ax55-v1)
++	tplink,archer-ax55-v1|\
++	tplink,archer-ax55-v4)
+ 		caldata_extract "0:ART" 0x26800 0x20000
+ 		label_mac=$(get_mac_binary "/tmp/tp_data/default-mac" 0)
+ 		[ -n "$label_mac" ] && ath11k_patch_mac "$(macaddr_add "$label_mac" 3)" 0
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/lib/preinit/09_mount_tp_data b/target/linux/qualcommax/ipq50xx/base-files/lib/preinit/09_mount_tp_data
+index 87f2e22..746c9a8 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/lib/preinit/09_mount_tp_data
++++ b/target/linux/qualcommax/ipq50xx/base-files/lib/preinit/09_mount_tp_data
+@@ -8,7 +8,7 @@
+ 
+ preinit_mount_tp_data() {
+ 	case "$(board_name)" in
+-	mercusys,mr80x-v2|tplink,archer-ax55-v1) ;;
++	mercusys,mr80x-v2|tplink,archer-ax55-v1|tplink,archer-ax55-v4) ;;
+ 	*) return ;;
+ 	esac
+ 
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
+index b6fe794..d7fbfb2 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
+@@ -287,6 +287,7 @@ platform_do_upgrade() {
+ 		nand_do_upgrade_success
+ 		;;
+ 	tplink,archer-ax55-v1|\
++	tplink,archer-ax55-v4|\
+ 	tplink,eap650-outdoor-v1|\
+ 	tplink,re700x)
+ 		# Dual boot: install into the inactive rootfs/rootfs_1 slot,
+-- 
+2.43.0
+
