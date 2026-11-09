@@ -1,0 +1,6 @@
+id=ryu_display_ai
+name=Ryu Display AI (screen enhancement engine)
+version=v@VERSION@
+versionCode=@VERSION_CODE@
+author=vagif96
+description=Shows Settings > Display > Screen enhancement engine (MEMC, super resolution, SDR to HDR, AI display) on HyperOS 3 global. Only adds 3 flags to device_features. Disables itself after a firmware update.
