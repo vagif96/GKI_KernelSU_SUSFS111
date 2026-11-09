@@ -49,7 +49,10 @@ def main():
     open(os.path.join(work, "patched_md5"), "w").write(hashlib.md5(nb).hexdigest() + "\n")
     open(os.path.join(work, "target_path"), "w").write(TARGET + "\n")
     p = os.path.join(work, "module.prop")
-    open(p, "w").write(open(p).read().replace("@VERSION@", VERSION).replace("@VERSION_CODE@", str(VERSION_CODE)))
+    prop = open(p).read().replace("@VERSION@", VERSION).replace("@VERSION_CODE@", str(VERSION_CODE))
+    if not prop.startswith("id="):
+        sys.exit("module.prop broken")
+    open(p, "w").write(prop)
     os.makedirs(a.out, exist_ok=True)
     z = os.path.join(a.out, f"ryu_display_ai-v{VERSION}-{hashlib.md5(raw).hexdigest()[:8]}.zip")
     with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
