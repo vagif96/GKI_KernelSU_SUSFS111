@@ -1,0 +1,6 @@
+id=ryu_app_fps
+name=Ryu App FPS (per-app refresh rate)
+version=v@VERSION@
+versionCode=@VERSION_CODE@
+author=vagif96
+description=Per-app refresh rate (60/90/120 Hz) like Realme: open this module's WebUI in KernelSU Next. Patched PowerKeeper (one small change). Disables itself after a firmware update or if PowerKeeper fails to start.

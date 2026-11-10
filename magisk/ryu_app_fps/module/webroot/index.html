@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Частота для приложений</title>
+<style>
+  :root { --bg:#f6f6f8; --card:#fff; --text:#111; --muted:#6b6b75; --line:#e4e4ea; --accent:#3482ff; --on:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#000; --card:#1c1c1e; --text:#f2f2f5; --muted:#9a9aa2; --line:#2c2c30; --accent:#4b8dff; --on:#fff; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px 16px 96px; background:var(--bg); color:var(--text);
+         font:16px/1.35 system-ui, -apple-system, "Roboto", sans-serif; }
+  h1 { font-size:26px; margin:8px 4px 4px; }
+  .sub { color:var(--muted); margin:0 4px 16px; font-size:14px; }
+  .card { background:var(--card); border-radius:20px; padding:4px 16px; margin-bottom:16px; }
+  .row { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:none; }
+  .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; }
+  .seg { display:flex; background:var(--bg); border-radius:12px; padding:3px; flex-shrink:0; }
+  .seg button { border:0; background:transparent; color:var(--muted); padding:6px 9px; border-radius:9px;
+                font:600 13px system-ui, sans-serif; min-width:38px; }
+  .seg button.on { background:var(--accent); color:var(--on); }
+  .label { font-weight:600; }
+  .hint { color:var(--muted); font-size:13px; padding:0 0 12px; }
+  input[type=search] { width:100%; padding:12px 14px; border-radius:14px; border:1px solid var(--line);
+                       background:var(--card); color:var(--text); font-size:15px; margin-bottom:12px; }
+  .tools { display:flex; gap:8px; align-items:center; margin:0 4px 12px; color:var(--muted); font-size:14px; }
+  .bar { position:fixed; left:0; right:0; bottom:0; padding:12px 16px 20px; background:linear-gradient(transparent, var(--bg) 30%); display:flex; gap:10px; }
+  .bar button { flex:1; border:0; border-radius:16px; padding:14px; font:600 16px system-ui, sans-serif; }
+  #save { background:var(--accent); color:var(--on); }
+  #reset { background:var(--card); color:var(--text); }
+  #status { margin:0 4px 12px; font-size:14px; color:var(--muted); min-height:1em; }
+</style>
+</head>
+<body>
+<h1>Частота для приложений</h1>
+<p class="sub">«Система» — частота как обычно. Для работы в «Экран → Частота обновления» выберите «Высокая» и режим «Выбор» (120&nbsp;Гц).</p>
+
+<div class="card">
+  <div class="row">
+    <div class="name label">Остальные приложения</div>
+    <div class="seg" id="defseg"></div>
+  </div>
+  <div class="hint">Частота для всех приложений из списка ниже, у которых выбрано «Система».</div>
+</div>
+
+<div id="status"></div>
+<input type="search" id="q" placeholder="Поиск приложения">
+<div class="tools"><label><input type="checkbox" id="sys"> показывать системные</label><span id="cnt"></span></div>
+<div class="card" id="list"></div>
+
+<div class="bar">
+  <button id="reset">Сбросить</button>
+  <button id="save">Сохранить</button>
+</div>
+
+<script>
+const MOD = "/data/adb/modules/ryu_app_fps";
+const RATES = [["sys","Сист."],["60","60"],["90","90"],["120","120"]];
+const KEEP60 = ["com.android.camera","com.android.incallui","com.xiaomi.scanner"];
+let apps = [], sysApps = [], choice = {}, def = "sys";
+
+function exec(cmd) {
+  return new Promise(resolve => {
+    if (typeof ksu === "undefined") { resolve({ code: -1, out: "", err: "no ksu" }); return; }
+    const cb = "cb_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    window[cb] = (code, out, err) => { delete window[cb]; resolve({ code, out, err }); };
+    ksu.exec(cmd, "{}", cb);
+  });
+}
+function toast(m) { try { ksu.toast(m); } catch (e) {} document.getElementById("status").textContent = m; }
+
+function seg(cur, onPick) {
+  const d = document.createElement("div"); d.className = "seg";
+  for (const [v, t] of RATES) {
+    const b = document.createElement("button"); b.textContent = t;
+    if (v === cur) b.className = "on";
+    b.onclick = () => { onPick(v); [...d.children].forEach(x => x.className = ""); b.className = "on"; };
+    d.appendChild(b);
+  }
+  return d;
+}
+
+function render() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const showSys = document.getElementById("sys").checked;
+  const pool = showSys ? [...new Set([...apps, ...sysApps])].sort() : apps;
+  const list = document.getElementById("list"); list.innerHTML = "";
+  // apps with an explicit choice first
+  const shown = pool.filter(p => !q || p.toLowerCase().includes(q))
+                    .sort((a, b) => ((choice[b] ? 1 : 0) - (choice[a] ? 1 : 0)) || a.localeCompare(b));
+  for (const p of shown) {
+    const r = document.createElement("div"); r.className = "row";
+    const n = document.createElement("div"); n.className = "name"; n.textContent = p;
+    r.appendChild(n);
+    r.appendChild(seg(choice[p] || "sys", v => { if (v === "sys") delete choice[p]; else choice[p] = v; }));
+    list.appendChild(r);
+  }
+  document.getElementById("cnt").textContent = "· " + shown.length + " прил.";
+}
+
+function buildJson() {
+  const lists = { "60": [], "90": [], "120": [] };
+  for (const [p, v] of Object.entries(choice)) lists[v].push(p);
+  if (def !== "sys") for (const p of apps) if (!choice[p]) lists[def].push(p);
+  return JSON.stringify({ isSmart: false, ryuDefault: def,
+    list60: lists["60"].join(","), list90: lists["90"].join(","), list120: lists["120"].join(",") });
+}
+
+async function load() {
+  toast("Загрузка списка приложений…");
+  apps = (await exec("sh " + MOD + "/fps.sh list")).out.split("\n").map(s => s.trim()).filter(Boolean);
+  sysApps = (await exec("sh " + MOD + "/fps.sh listsys")).out.split("\n").map(s => s.trim()).filter(Boolean);
+  const g = (await exec("sh " + MOD + "/fps.sh get")).out;
+  const m = g.match(/value=(\{.*\})\}\]/);
+  if (m) {
+    try {
+      const j = JSON.parse(m[1]);
+      def = j.ryuDefault || "sys";
+      const isDefault = p => def !== "sys" && apps.includes(p);
+      for (const k of ["60", "90", "120"])
+        for (const p of (j["list" + k] || "").split(",").filter(Boolean))
+          if (!(isDefault(p) && k === def)) choice[p] = k;
+    } catch (e) {}
+  } else {
+    for (const p of KEEP60) choice[p] = "60";
+  }
+  const ds = document.getElementById("defseg"); ds.replaceWith(Object.assign(seg(def, v => def = v), { id: "defseg" }));
+  render();
+  toast(m ? "Загружены сохранённые настройки" : "Настроек ещё нет: выберите частоты и нажмите «Сохранить»");
+}
+
+document.getElementById("q").oninput = render;
+document.getElementById("sys").onchange = render;
+document.getElementById("save").onclick = async () => {
+  const json = buildJson();
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  const r = await exec("sh " + MOD + "/fps.sh set " + b64);
+  toast(/Result: null/.test(r.out) ? "Сохранено, PowerKeeper перезапущен" : ("Ошибка: " + (r.out || r.err)));
+};
+document.getElementById("reset").onclick = async () => {
+  await exec("sh " + MOD + "/fps.sh clear");
+  choice = {}; def = "sys"; for (const p of KEEP60) choice[p] = "60";
+  document.getElementById("defseg").replaceWith(Object.assign(seg(def, v => def = v), { id: "defseg" }));
+  render(); toast("Сброшено: PowerKeeper работает как в прошивке");
+};
+load();
+</script>
+</body>
+</html>
