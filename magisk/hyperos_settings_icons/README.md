@@ -27,7 +27,10 @@ changed.
 
 * install: `customize.sh` patches `pm path com.android.settings` into
   `/data/adb/modules/hyperos_settings_icons/Settings.apk`;
-* boot: `post-fs-data.sh` bind-mounts it over the original (log: `boot.log`);
+* boot: `post-fs-data.sh` bind-mounts it over the original (log: `boot.log`) from a
+  hard link in `/data/misc/hyperos_settings_icons/`: Zygisk implementations
+  (ReZygisk) remove mounts whose source is in `/data/adb/modules` from app
+  processes, Settings included;
   after a firmware update the new Settings.apk is patched again automatically;
 * `service.sh` compiles Settings once (speed-profile) 3 minutes after boot.
 

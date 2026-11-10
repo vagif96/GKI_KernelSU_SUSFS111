@@ -22,6 +22,12 @@ MODDIR=${0%/*}
       rm -f "$MODDIR/Settings.apk.new"; echo "patching failed: original Settings left as is"; exit 0
     fi
   fi
-  chcon "$(ctx_of "$real")" "$MODDIR/Settings.apk"
-  mount -o bind "$MODDIR/Settings.apk" "$real" && echo "mounted -> $real" || echo "mount failed"
+  # Mount from outside /data/adb: Zygisk implementations (ReZygisk ...) remove mounts
+  # whose source is under /data/adb/modules from app processes, Settings included.
+  # A hard link: same file, no extra space.
+  D=/data/misc/hyperos_settings_icons
+  mkdir -p "$D" && chmod 0700 "$D"
+  ln -f "$MODDIR/Settings.apk" "$D/Settings.apk" 2>/dev/null || cp -f "$MODDIR/Settings.apk" "$D/Settings.apk"
+  chcon "$(ctx_of "$real")" "$D/Settings.apk"
+  mount -o bind "$D/Settings.apk" "$real" && echo "mounted -> $real (from $D)" || echo "mount failed"
 } > "$MODDIR/boot.log" 2>&1

@@ -1,2 +1,3 @@
 #!/system/bin/sh
-# nothing outside the module directory is changed
+# the hard link used for the mount
+rm -rf /data/misc/hyperos_settings_icons
