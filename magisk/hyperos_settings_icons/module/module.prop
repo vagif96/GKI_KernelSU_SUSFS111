@@ -1,0 +1,6 @@
+id=hyperos_settings_icons
+name=HyperOS Settings Icons
+version=v@VERSION@
+versionCode=@VERSION_CODE@
+author=vagif96
+description=Icons in Settings > Additional settings. Patches the Settings.apk of this phone at install time (and again by itself after a firmware update), nothing is downloaded.
