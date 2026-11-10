@@ -20,9 +20,29 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "ryu_settings_icons"))
 import apk_patch  # noqa: E402
 
-VERSION, VERSION_CODE = "1.0", 1
+VERSION, VERSION_CODE = "1.1", 2
 APKTOOL_URL = "https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar"
 SMALI = "smali/com/miui/powerkeeper/statemachine/DisplayFrameSetting.smali"
+# smart mode ("Default (recommended)"): fps_smart_group -> user key ryu_fps_smart_group
+INJECT_SMART = '''    :cond_1
+    :goto_0
+    # RYU: per-app overrides for smart mode (PowerKeeper misc key "ryu_fps_smart_group")
+    iget-object v0, p0, Lcom/miui/powerkeeper/statemachine/DisplayFrameSetting;->mContext:Landroid/content/Context;
+    const-string v1, "ryu_fps_smart_group"
+    const/4 v2, 0x0
+    invoke-static {v0, v1, v2}, Lcom/miui/powerkeeper/provider/SimpleSettings$Misc;->getString(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v0
+    if-eqz v0, :cond_ryu_smart_skip
+    invoke-virtual {v0}, Ljava/lang/String;->isEmpty()Z
+    move-result v1
+    if-nez v1, :cond_ryu_smart_skip
+    move-object p1, v0
+    const-string v1, "parseTopSmartAppFromDb ryu override = "
+    invoke-virtual {v1, v0}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v1
+    invoke-direct {p0, v1}, Lcom/miui/powerkeeper/statemachine/DisplayFrameSetting;->writeLocalLog(Ljava/lang/String;)V
+    :cond_ryu_smart_skip
+'''
 INJECT = '''    :goto_1
     # RYU: user per-app refresh rate config (PowerKeeper misc key "ryu_fps_group") overrides cloud/local
     iget-object v0, v1, Lcom/miui/powerkeeper/statemachine/DisplayFrameSetting;->mContext:Landroid/content/Context;
@@ -72,7 +92,14 @@ def main():
     m = s[a0:b0]
     if m.count("    :goto_1\n") != 1 or "fps_group" not in m:
         sys.exit("parseTopDefineAppFromDb has an unexpected shape, not patching")
-    open(p, "w").write(s[:a0] + m.replace("    :goto_1\n", INJECT, 1) + s[b0:])
+    s = s[:a0] + m.replace("    :goto_1\n", INJECT, 1) + s[b0:]
+    a1 = s.index(".method private parseTopSmartAppFromDb(")
+    b1 = s.index(".end method", a1)
+    m1 = s[a1:b1]
+    if m1.count("    :cond_1\n    :goto_0\n") != 1 or "fps_smart_group" not in m1:
+        sys.exit("parseTopSmartAppFromDb has an unexpected shape, not patching")
+    s = s[:a1] + m1.replace("    :cond_1\n    :goto_0\n", INJECT_SMART, 1) + s[b1:]
+    open(p, "w").write(s)
     built = os.path.join(work, "built.apk")
     run(["java", "-jar", apktool, "b", "-o", built, dec])
     with zipfile.ZipFile(built) as z:

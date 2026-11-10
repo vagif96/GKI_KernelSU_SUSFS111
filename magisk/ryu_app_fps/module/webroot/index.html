@@ -36,14 +36,14 @@
 </head>
 <body>
 <h1>Частота для приложений</h1>
-<p class="sub">«Система» — частота как обычно. Для работы в «Экран → Частота обновления» выберите «Высокая» и режим «Выбор» (120&nbsp;Гц).</p>
+<p class="sub">«Авто» — частоту выбирает система (умный режим Xiaomi). В «Экран → Частота обновления» выберите «Высокая» и «По умолчанию (рекомендуется)».</p>
 
 <div class="card">
   <div class="row">
     <div class="name label">Остальные приложения</div>
     <div class="seg" id="defseg"></div>
   </div>
-  <div class="hint">Частота для всех приложений из списка ниже, у которых выбрано «Система».</div>
+  <div class="hint">Частота для всех приложений из списка ниже, у которых выбрано «Авто». «Авто» здесь — оставить решение системе (экономия батареи).</div>
 </div>
 
 <div id="status"></div>
@@ -58,7 +58,7 @@
 
 <script>
 const MOD = "/data/adb/modules/ryu_app_fps";
-const RATES = [["sys","Сист."],["60","60"],["90","90"],["120","120"]];
+const RATES = [["sys","Авто"],["60","60"],["90","90"],["120","120"]];
 const KEEP60 = ["com.android.camera","com.android.incallui","com.xiaomi.scanner"];
 let apps = [], sysApps = [], choice = {}, def = "sys";
 
@@ -101,47 +101,62 @@ function render() {
   document.getElementById("cnt").textContent = "· " + shown.length + " прил.";
 }
 
-function buildJson() {
-  const lists = { "60": [], "90": [], "120": [] };
-  for (const [p, v] of Object.entries(choice)) lists[v].push(p);
-  if (def !== "sys") for (const p of apps) if (!choice[p]) lists[def].push(p);
-  return JSON.stringify({ isSmart: false, ryuDefault: def,
-    list60: lists["60"].join(","), list90: lists["90"].join(","), list120: lists["120"].join(",") });
+function lists() {
+  const l = { "60": [], "90": [], "120": [] };
+  for (const [p, v] of Object.entries(choice)) l[v].push(p);
+  if (def !== "sys") for (const p of apps) if (!choice[p]) l[def].push(p);
+  return l;
 }
+function parseValue(out) {
+  const m = (out || "").match(/value=(\{.*\})\}\]/);
+  if (!m) return null;
+  try { return JSON.parse(m[1]); } catch (e) { return null; }
+}
+// Xiaomi's smart config with our apps moved into our groups; everything else kept
+function mergeSmart(base, l) {
+  const j = Object.assign({}, base || {});
+  const mine = new Set([...l["60"], ...l["90"], ...l["120"]]);
+  for (const k of ["60", "90", "120"]) {
+    const keep = (j["list" + k] || "").split(",").filter(p => p && !mine.has(p));
+    j["list" + k] = keep.concat(l[k]).join(",");
+  }
+  return j;
+}
+const b64 = s => btoa(unescape(encodeURIComponent(s)));
 
 async function load() {
   toast("Загрузка списка приложений…");
   apps = (await exec("sh " + MOD + "/fps.sh list")).out.split("\n").map(s => s.trim()).filter(Boolean);
   sysApps = (await exec("sh " + MOD + "/fps.sh listsys")).out.split("\n").map(s => s.trim()).filter(Boolean);
-  const g = (await exec("sh " + MOD + "/fps.sh get")).out;
-  const m = g.match(/value=(\{.*\})\}\]/);
-  if (m) {
-    try {
-      const j = JSON.parse(m[1]);
-      def = j.ryuDefault || "sys";
-      const isDefault = p => def !== "sys" && apps.includes(p);
-      for (const k of ["60", "90", "120"])
-        for (const p of (j["list" + k] || "").split(",").filter(Boolean))
-          if (!(isDefault(p) && k === def)) choice[p] = k;
-    } catch (e) {}
+  const saved = parseValue((await exec("sh " + MOD + "/fps.sh get ryu_fps_choices")).out);
+  if (saved) {
+    def = saved._default || "sys";
+    for (const [p, v] of Object.entries(saved)) if (p !== "_default") choice[p] = v;
   } else {
     for (const p of KEEP60) choice[p] = "60";
   }
-  const ds = document.getElementById("defseg"); ds.replaceWith(Object.assign(seg(def, v => def = v), { id: "defseg" }));
+  document.getElementById("defseg").replaceWith(Object.assign(seg(def, v => def = v), { id: "defseg" }));
   render();
-  toast(m ? "Загружены сохранённые настройки" : "Настроек ещё нет: выберите частоты и нажмите «Сохранить»");
+  toast(saved ? "Загружены сохранённые настройки" : "Настроек ещё нет: выберите частоты и нажмите «Сохранить»");
 }
 
 document.getElementById("q").oninput = render;
 document.getElementById("sys").onchange = render;
 document.getElementById("save").onclick = async () => {
-  const json = buildJson();
-  const b64 = btoa(unescape(encodeURIComponent(json)));
-  const r = await exec("sh " + MOD + "/fps.sh set " + b64);
-  toast(/Result: null/.test(r.out) ? "Сохранено, PowerKeeper перезапущен" : ("Ошибка: " + (r.out || r.err)));
+  toast("Сохранение…");
+  const base = parseValue((await exec("sh " + MOD + "/fps.sh get fps_smart_group")).out);
+  const smart = JSON.stringify(mergeSmart(base, lists()));
+  const choices = JSON.stringify(Object.assign({ _default: def }, choice));
+  const r1 = await exec("sh " + MOD + "/fps.sh set ryu_fps_smart_group " + b64(smart));
+  const r2 = await exec("sh " + MOD + "/fps.sh set ryu_fps_choices " + b64(choices));
+  await exec("sh " + MOD + "/fps.sh clear ryu_fps_group");
+  await exec("sh " + MOD + "/fps.sh restart");
+  const ok = /Result: null/.test(r1.out) && /Result: null/.test(r2.out);
+  toast(ok ? "Сохранено, PowerKeeper перезапущен" : ("Ошибка: " + (r1.out || r1.err) + " " + (r2.out || "")));
 };
 document.getElementById("reset").onclick = async () => {
-  await exec("sh " + MOD + "/fps.sh clear");
+  for (const k of ["ryu_fps_smart_group", "ryu_fps_group", "ryu_fps_choices"]) await exec("sh " + MOD + "/fps.sh clear " + k);
+  await exec("sh " + MOD + "/fps.sh restart");
   choice = {}; def = "sys"; for (const p of KEEP60) choice[p] = "60";
   document.getElementById("defseg").replaceWith(Object.assign(seg(def, v => def = v), { id: "defseg" }));
   render(); toast("Сброшено: PowerKeeper работает как в прошивке");

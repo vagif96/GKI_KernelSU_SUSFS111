@@ -16,8 +16,11 @@ The WebUI stores the user's choice with
 and restarts PowerKeeper. "Остальные приложения" puts every third-party app without an
 explicit choice into the selected list.
 
-Requirements: Settings → Display → Refresh rate → **High** + **Custom (Выбор) 120 Hz**
-(the "default/recommended" mode is PowerKeeper's smart mode, which ignores the lists).
+v1.1 also patches `parseTopSmartAppFromDb()` (smart mode, key `ryu_fps_smart_group`).
+The WebUI stores the user's choices in `ryu_fps_choices`, reads Xiaomi's current
+`fps_smart_group`, moves only the user's apps into list60/list90/list120 and stores the
+result as `ryu_fps_smart_group`. Use Settings → Display → Refresh rate → **High** +
+**Default (recommended)**: apps set to "Авто" keep Xiaomi's dynamic behaviour.
 
 Safety: the installer refuses a different PowerKeeper.apk; after a firmware update the
 module disables itself; if PowerKeeper is not running 90 s after boot, `service.sh`
