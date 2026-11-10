@@ -12,7 +12,7 @@ MODDIR=${0%/*}
   if [ "$have" = "$(cat "$MODDIR/patched_md5")" ]; then echo "already mounted"; exit 0; fi
   if [ "$have" != "$(cat "$MODDIR/orig_md5")" ] || [ ! -f "$MODDIR/Settings.apk" ]; then
     echo "Settings.apk changed ($have): patching again"
-    if "$MODDIR/bin/ryu_patch" "$real" "$MODDIR/Settings.apk.new" "$MODDIR/icons"; then
+    if "$MODDIR/bin/ryu_patch" $(patch_opts) "$real" "$MODDIR/Settings.apk.new" "$MODDIR/icons"; then
       mv -f "$MODDIR/Settings.apk.new" "$MODDIR/Settings.apk"
       echo "$have" > "$MODDIR/orig_md5"
       file_md5 "$MODDIR/Settings.apk" > "$MODDIR/patched_md5"

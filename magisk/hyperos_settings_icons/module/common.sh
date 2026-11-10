@@ -1,4 +1,6 @@
 # Shared helpers (customize.sh, post-fs-data.sh)
+# touch /data/adb/hyperos_icons_no_wifi to keep MIUI's own "Saved networks" screen
+patch_opts() { [ -f /data/adb/hyperos_icons_no_wifi ] && echo "--no-wifi"; }
 file_md5() { md5sum "$1" 2>/dev/null | cut -d' ' -f1; }
 ctx_of() { ls -Z "$1" 2>/dev/null | awk '{print $1}'; }
 # $1 = "pm" to ask the package manager first (not at post-fs-data: it is not running yet)

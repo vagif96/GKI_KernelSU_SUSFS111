@@ -1047,10 +1047,20 @@ func skipEntry(elem, key string) bool {
 }
 
 func main() {
-	if len(os.Args) != 4 {
-		fmt.Fprintln(os.Stderr, "usage: ryu_patch <Settings.apk> <out.apk> <icons dir>")
+	wifi := true
+	var args []string
+	for _, a := range os.Args[1:] {
+		if a == "--no-wifi" {
+			wifi = false
+		} else {
+			args = append(args, a)
+		}
+	}
+	if len(args) != 3 {
+		fmt.Fprintln(os.Stderr, "usage: ryu_patch [--no-wifi] <Settings.apk> <out.apk> <icons dir>")
 		os.Exit(1)
 	}
+	os.Args = append([]string{os.Args[0]}, args...)
 	src, err := os.ReadFile(os.Args[1])
 	if err != nil {
 		fail("%v", err)
@@ -1161,11 +1171,23 @@ func main() {
 	if err != nil {
 		fail("%v", err)
 	}
-	out, err := rebuildZip(src, map[string][]byte{"resources.arsc": newArsc, xmlPath: newXML}, files)
+	replace := map[string][]byte{"resources.arsc": newArsc, xmlPath: newXML}
+	if wifi {
+		w, info, err := stockSavedWifi(src, zi, t)
+		if err != nil {
+			fmt.Println("  Wi-Fi saved networks: skipped (" + err.Error() + ")")
+		} else {
+			for k, v := range w {
+				replace[k] = v
+			}
+			fmt.Println("  Wi-Fi saved networks: stock screen (" + info + ")")
+		}
+	}
+	out, err := rebuildZip(src, replace, files)
 	if err != nil {
 		fail("%v", err)
 	}
-	if err := verify(src, out, xmlPath, paths, done); err != nil {
+	if err := verify(src, out, xmlPath, replace, paths, done); err != nil {
 		fail("verify: %v", err)
 	}
 	tmp := os.Args[2] + ".tmp"
@@ -1184,7 +1206,7 @@ func main() {
 
 // verify re-reads the output: every original entry is unchanged except the two
 // replaced ones, the new drawables resolve, and the icons point at them.
-func verify(src, out []byte, xmlPath string, paths []string, done []iconRef) error {
+func verify(src, out []byte, xmlPath string, replace map[string][]byte, paths []string, done []iconRef) error {
 	_, eo, _, err := zipIndex(src)
 	if err != nil {
 		return err
@@ -1201,7 +1223,11 @@ func verify(src, out []byte, xmlPath string, paths []string, done []iconRef) err
 		if !ok {
 			return fmt.Errorf("%s lost", e.name)
 		}
-		if e.name == "resources.arsc" || e.name == xmlPath {
+		if _, ok := replace[e.name]; ok {
+			b, err := content(out, n)
+			if err != nil || !bytes.Equal(b, replace[e.name]) {
+				return fmt.Errorf("%s not written correctly", e.name)
+			}
 			continue
 		}
 		a, err1 := rawData(src, e)

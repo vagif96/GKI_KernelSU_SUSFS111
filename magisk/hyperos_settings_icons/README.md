@@ -23,6 +23,17 @@ installer lists them.  The output is checked before it is used (original entries
 unchanged, new drawables resolve, icons reference them); on any error nothing is
 changed.
 
+## Wi-Fi: saved networks
+
+Wi-Fi → Advanced → Saved networks opens the stock Android screen
+(`Settings$SavedAccessPointsSettingsActivity`: details, QR sharing, forget/connect
+for every saved network), as `ryu_settings_icons --stock-saved-wifi` does
+(`patcher/wifi.go`).  The three Compose items of the network details page are put
+into hidden categories (a ComposeView crashes inside the miuix activity).  If the
+firmware lacks the activity or the screens differ, this part is skipped and only
+the icons are added.  To keep MIUI's screen: `touch /data/adb/hyperos_icons_no_wifi`
+and reinstall the module.
+
 ## On the phone
 
 * install: `customize.sh` patches `pm path com.android.settings` into
