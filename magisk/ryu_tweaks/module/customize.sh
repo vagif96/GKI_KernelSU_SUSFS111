@@ -1,11 +1,21 @@
 SKIPUNZIP=0
 . "$MODPATH/common.sh"
 ui_print "- Ryu Tweaks"
-# target of the Settings part is found on the device
+# targets of the APK parts are found on the device
 real=$(settings_apk) && echo "$real" > "$MODPATH/parts/settings/target_path"
+for d in "$MODPATH"/parts/*; do
+  [ -f "$d/package" ] && [ "$(basename "$d")" != settings ] || continue
+  real=$(pkg_apk "$(cat "$d/package")")
+  if [ "$real" = UPDATED ]; then
+    ui_print "! $(basename "$d"): $(cat "$d/package") runs from an update in /data/app, skipped"
+    touch "$d/off"; continue
+  fi
+  [ -n "$real" ] && echo "$real" > "$d/target_path"
+done
 ok=0
 for d in "$MODPATH"/parts/*; do
   name=$(basename "$d")
+  [ -f "$d/off" ] && continue
   real=$(cat "$d/target_path" 2>/dev/null)
   if [ ! -f "$real" ]; then ui_print "! $name: target not found, skipped"; touch "$d/off"; continue; fi
   have=$(file_md5 "$real")
@@ -13,7 +23,7 @@ for d in "$MODPATH"/parts/*; do
   prev=""
   for pm in /data/adb/modules/ryu_tweaks/parts/$name/patched_md5 \
             /data/adb/modules/ryu_bt_volume/patched_md5 /data/adb/modules/ryu_other_settings_icons/patched_md5 \
-            /data/adb/modules/ryu_display_ai/patched_md5; do
+            /data/adb/modules/ryu_display_ai/patched_md5 /data/adb/modules/ryu_app_fps/patched_md5; do
     [ -f "$pm" ] && prev="$prev $(cat "$pm")"
   done
   case " $prev " in *" $have "*) ui_print "- $name: currently patched by the installed version";; esac
@@ -33,4 +43,5 @@ for old in ryu_other_settings_icons ryu_bt_volume ryu_display_ai ryu_app_fps; do
     touch "/data/adb/modules/$old/remove"; ui_print "- old module $old will be removed"
   fi
 done
+[ -d "$MODPATH/parts/powerkeeper" ] && ui_print "- Refresh rate: Settings > Display > Refresh rate > Apps using high refresh rate (also in Default mode)"
 ui_print "- Reboot to apply."

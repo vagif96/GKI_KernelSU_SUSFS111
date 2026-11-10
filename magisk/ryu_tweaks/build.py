@@ -9,7 +9,7 @@ switched off, the other part keeps working.
 import argparse, os, shutil, subprocess, sys, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION, VERSION_CODE = "1.4", 5
+VERSION, VERSION_CODE = "1.5", 6
 
 
 def main():
@@ -20,6 +20,8 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "out"))
     ap.add_argument("--no-stock-saved-wifi", action="store_true",
                     help="keep MIUI's own Saved networks screen")
+    ap.add_argument("--powerkeeper", required=True, help="PowerKeeper.apk (com.miui.powerkeeper)")
+    ap.add_argument("--misettings", required=True, help="MiSettings.apk (com.xiaomi.misettings)")
     ap.add_argument("--settings-work", default=os.path.join(HERE, "..", "ryu_settings_icons", "work"))
     a = ap.parse_args()
     s_dir = os.path.join(HERE, "..", "ryu_settings_icons")
@@ -31,6 +33,9 @@ def main():
                    + ([] if a.no_stock_saved_wifi else ["--stock-saved-wifi"]), check=True)
     subprocess.run([sys.executable, os.path.join(v_dir, "build.py"), a.volume_xml, "--out", tmp_out], check=True)
     subprocess.run([sys.executable, os.path.join(d_dir, "build.py"), a.display_xml, "--out", tmp_out], check=True)
+    h_out = os.path.join(tmp_out, "hz")
+    subprocess.run([sys.executable, os.path.join(HERE, "..", "ryu_hz", "build.py"), "--powerkeeper", a.powerkeeper,
+                    "--misettings", a.misettings, "--out", h_out], check=True)
     dmod = os.path.join(d_dir, "work")
     smod = os.path.join(a.settings_work, "module")
     vmod = os.path.join(v_dir, "work")
@@ -52,6 +57,17 @@ def main():
     shutil.copy(os.path.join(dmod, "files", dfile), os.path.join(pd, "file"))
     for f in ("orig_md5", "patched_md5", "target_path"):
         shutil.copy(os.path.join(dmod, f), os.path.join(pd, f))
+    open(os.path.join(ps, "package"), "w").write("com.android.settings\n")
+    info = {l.split()[0]: dict(kv.split("=") for kv in l.split(" :: ")[0].split()[1:3])
+            for l in open(os.path.join(h_out, "info.txt"))}
+    for name, apk, pkg in (("powerkeeper", "PowerKeeper", "com.miui.powerkeeper"),
+                           ("misettings", "MiSettings", "com.xiaomi.misettings")):
+        pp = os.path.join(work, "parts", name)
+        os.makedirs(pp)
+        shutil.copy(os.path.join(h_out, apk + ".apk"), os.path.join(pp, "file"))
+        open(os.path.join(pp, "orig_md5"), "w").write(info[apk]["orig"] + "\n")
+        open(os.path.join(pp, "patched_md5"), "w").write(info[apk]["patched"] + "\n")
+        open(os.path.join(pp, "package"), "w").write(pkg + "\n")
     prop = open(os.path.join(work, "module.prop")).read()
     prop = prop.replace("@VERSION@", VERSION).replace("@VERSION_CODE@", str(VERSION_CODE))
     if not prop.startswith("id=ryu_tweaks"):

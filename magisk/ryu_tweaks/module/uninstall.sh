@@ -1,2 +1,3 @@
 #!/system/bin/sh
-# nothing outside the module directory is changed
+# hard links used for the mounts
+rm -rf /data/misc/ryu_tweaks

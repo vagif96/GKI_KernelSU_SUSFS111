@@ -3,4 +3,4 @@ name=Ryu Tweaks
 version=v@VERSION@
 versionCode=@VERSION_CODE@
 author=vagif96
-description=ProjectRyu / HyperOS 3: icons in Settings > Additional settings, detailed Wi-Fi saved networks, Bluetooth volume without the EU limit, Display > AI image processing. Each part checks its firmware file and turns itself off after an update.
+description=ProjectRyu / HyperOS 3: icons in Settings > Additional settings, detailed Wi-Fi saved networks, Bluetooth volume without the EU limit, Display > AI image processing; Apps using high refresh rate also in the adaptive mode. Each part checks its firmware file and turns itself off after an update.
