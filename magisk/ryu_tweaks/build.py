@@ -9,7 +9,7 @@ switched off, the other part keeps working.
 import argparse, os, shutil, subprocess, sys, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION, VERSION_CODE = "1.3", 4
+VERSION, VERSION_CODE = "1.4", 5
 
 
 def main():

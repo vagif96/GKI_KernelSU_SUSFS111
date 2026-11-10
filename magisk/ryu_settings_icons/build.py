@@ -50,11 +50,13 @@ OVERLAY_PKG = "com.ryu.settings.othericons.overlay"
 OVERLAY_APK = "RyuOtherSettingsIcons.apk"
 SCREEN = "xml/other_personal_settings"
 WIFI_SCREEN = "xml/wifi_configure_settings"
+# items of the "Additional settings" screen made always visible (their controller hides them)
+ALWAYS_SHOW = ["video_tool_box"]  # Video toolbox (MEMC / super resolution / picture panel)
 WIFI_DETAILS = "xml/wifi_network_details_fragment2"
 SAVED_WIFI_ACTIVITY = "com.android.settings.Settings$SavedAccessPointsSettingsActivity"
 MODULE_ID = "ryu_other_settings_icons"
-VERSION = "3.4"
-VERSION_CODE = 34
+VERSION = "3.5"
+VERSION_CODE = 35
 
 APKTOOL_URL = "https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar"
 SIGNER_URL = "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
@@ -180,6 +182,10 @@ def verify(aapt2, orig, patched, new_ids, xml_entry, wifi_entry, details_entry=N
         if rp["drawable/" + n][0] != rid:
             sys.exit(f"VERIFY: id mismatch for {n}")
     tree = subprocess.check_output([aapt2, "dump", "xmltree", "--file", xml_entry, patched], text=True)
+    for k in ALWAYS_SHOW:
+        m = re.search(r'key\(0x010101e8\)="' + re.escape(k) + r'".*?(?=\n\s*E: )', tree, re.S)
+        if not m or "controller" in m.group(0):
+            sys.exit(f"VERIFY: {k} still has a controller")
     if tree.count("apk/miuisettings:showIcon=true") < len(new_ids):
         sys.exit("VERIFY: miuisettings:showIcon=true (boolean) missing")
     for rid in new_ids.values():
@@ -315,6 +321,13 @@ def main():
         details = cpat.sub(hide, details)
         if sorted(wrapped) != ["certificate_details", "privacy_settings", "server_name"]:
             sys.exit(f"unexpected Compose items in {WIFI_DETAILS}: {wrapped}")
+
+    # Always show these items: drop the controller that hides them on this region/model.
+    for k in ALWAYS_SHOW:
+        pat = re.compile(r'(<com\.android\.settingslib[^>]*?android:key="' + re.escape(k) + r'"[^>]*?) settings:controller="[^"]*"')
+        xml, n = pat.subn(r"\1", xml)
+        if n != 1:
+            sys.exit(f"could not unhide {k}")
 
     keys = re.findall(r'android:key="([\w.]+)"', xml)
     wanted = [k for k in keys if k in ICONS]
