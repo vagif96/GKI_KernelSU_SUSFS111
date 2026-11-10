@@ -1,0 +1,15 @@
+#!/system/bin/sh
+# Once per installed Settings.apk: let ART compile the patched Settings now, at low
+# priority, instead of a surprise background recompilation later (that caused lags).
+MODDIR=${0%/*}
+d="$MODDIR/parts/settings"
+[ -f "$d/off" ] && exit 0
+mark="$MODDIR/.dexopt_$(cat "$d/patched_md5" 2>/dev/null)"
+[ -f "$mark" ] && exit 0
+until [ "$(getprop sys.boot_completed)" = "1" ]; do sleep 10; done
+sleep 180
+{
+  echo "dexopt settings $(date)"
+  nice -n 19 cmd package compile -m speed-profile com.android.settings </dev/null 2>&1
+} >> "$MODDIR/boot.log" 2>&1
+touch "$mark"

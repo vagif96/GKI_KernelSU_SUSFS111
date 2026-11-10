@@ -12,7 +12,8 @@ for d in "$MODPATH"/parts/*; do
   # the file may still be bind-mounted by an installed (older) version of this module
   prev=""
   for pm in /data/adb/modules/ryu_tweaks/parts/$name/patched_md5 \
-            /data/adb/modules/ryu_bt_volume/patched_md5 /data/adb/modules/ryu_other_settings_icons/patched_md5; do
+            /data/adb/modules/ryu_bt_volume/patched_md5 /data/adb/modules/ryu_other_settings_icons/patched_md5 \
+            /data/adb/modules/ryu_display_ai/patched_md5; do
     [ -f "$pm" ] && prev="$prev $(cat "$pm")"
   done
   case " $prev " in *" $have "*) ui_print "- $name: currently patched by the installed version";; esac
@@ -27,7 +28,7 @@ for d in "$MODPATH"/parts/*; do
 done
 [ "$ok" = 1 ] || abort "! Nothing matches this firmware (nothing was changed)"
 # the separate modules are replaced by this one
-for old in ryu_other_settings_icons ryu_bt_volume; do
+for old in ryu_other_settings_icons ryu_bt_volume ryu_display_ai ryu_app_fps; do
   if [ -d "/data/adb/modules/$old" ]; then
     touch "/data/adb/modules/$old/remove"; ui_print "- old module $old will be removed"
   fi

@@ -1,6 +1,6 @@
 id=ryu_tweaks
-name=Ryu Tweaks (Settings icons + BT volume)
+name=Ryu Tweaks
 version=v@VERSION@
 versionCode=@VERSION_CODE@
 author=vagif96
-description=HyperOS-style icons in Settings > Additional settings + no EU volume limit for Bluetooth/headphones (ProjectRyu / HyperOS 3). Each part checks its firmware file and turns itself off after an update.
+description=ProjectRyu / HyperOS 3: icons in Settings > Additional settings, detailed Wi-Fi saved networks, Bluetooth volume without the EU limit, Display > AI image processing. Each part checks its firmware file and turns itself off after an update.
