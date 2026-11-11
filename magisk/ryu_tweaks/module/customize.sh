@@ -18,6 +18,7 @@ for d in "$MODPATH"/parts/*; do
   [ -f "$d/off" ] && continue
   real=$(cat "$d/target_path" 2>/dev/null)
   if [ ! -f "$real" ]; then ui_print "! $name: target not found, skipped"; touch "$d/off"; continue; fi
+  unmount_stale "$real" >/dev/null   # read the firmware file, not an earlier version's mount
   have=$(file_md5 "$real")
   # the file may still be bind-mounted by an installed (older) version of this module
   prev=""

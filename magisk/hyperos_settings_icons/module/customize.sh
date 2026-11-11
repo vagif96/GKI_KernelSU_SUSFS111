@@ -36,6 +36,7 @@ for d in "$MODPATH"/parts/*; do
   real=$(pkg_apk "$pkg")
   if [ "$real" = UPDATED ]; then ui_print "! $name: $pkg runs from an update in /data/app, skipped"; touch "$d/off"; continue; fi
   [ -f "$real" ] || { ui_print "! $name: $pkg not found, skipped"; touch "$d/off"; continue; }
+  unmount_stale "$real" >/dev/null   # read the firmware file, not an earlier version's mount
   have=$(file_md5 "$real")
   prev=$(cat "/data/adb/modules/hyperos_settings_icons/parts/$name/patched_md5" 2>/dev/null)
   if [ "$have" != "$(cat "$d/orig_md5")" ] && [ "$have" != "$prev" ]; then
