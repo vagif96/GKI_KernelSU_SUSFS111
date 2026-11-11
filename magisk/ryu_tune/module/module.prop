@@ -1,0 +1,6 @@
+id=ryu_tune
+name=Ryu Balanced Tune
+version=v@VERSION@
+versionCode=@VERSION_CODE@
+author=vagif96
+description=Balanced userspace tuning for the stock kernel (GKI 6.12 / Snapdragon 8 Elite): TCP BBR + fq, light vm and I/O-accounting tweaks. Governor (walt), CPU frequencies and the I/O scheduler are left stock. Fully reversible: remove and reboot.
