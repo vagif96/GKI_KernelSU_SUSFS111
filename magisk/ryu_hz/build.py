@@ -78,9 +78,9 @@ def method(text, pattern, must=None):
 
 def p0_is_this(body):
     """True if p0 is never written in the method body."""
-    return not re.search(r"^\s+(move-result(-object)?|move(-object)?(/from16|/16)?|const[\w/-]*|"
-                         r"[ais]get[\w-]*|new-instance|new-array|check-cast|instance-of|"
-                         r"array-length|[\w-]+-(int|long|float|double)[\w/]*) p0,", body, re.M)
+    return not re.search(r"^\s+(move-result(-object|-wide)?|move-exception|move(-object|-wide)?(/from16|/16)?|"
+                         r"const[\w/-]*|[ais]get[\w-]*|new-instance|new-array|instance-of|"
+                         r"array-length|[\w-]+-(int|long|float|double)[\w/]*) p0(,|$)", body, re.M)
 
 
 def first_insn(body):
@@ -144,19 +144,19 @@ HELPERS = f"""
 .end method
 """
 
-REFRESH = f"    invoke-direct/range {{p0 .. p0}}, {DFS}->ryuRefresh()V\n\n    return-void"
-
-
-def refresh_before_returns(text, pattern):
-    a, b, h = method(text, pattern)
-    body = text[a:b]
-    if not p0_is_this(body):
-        sys.exit(f"{h}: p0 is reassigned, cannot call ryuRefresh")
-    n = body.count("\n    return-void")
-    if n == 0:
-        sys.exit(f"{h}: no return-void")
-    body = body.replace("\n    return-void", "\n" + REFRESH)
-    return text[:a] + body + text[b:], n
+def refresh_after_calls(text, name):
+    """Call ryuRefresh right after every call of DFS.<name>: the register that holds
+    'this' there is the call's own receiver (checked by the verifier on that call),
+    so this does not depend on how the method itself uses p0."""
+    pat = re.compile(r"^    invoke-direct(/range)? \{(\w+)(?:,[^}]*| \.\. \w+)?\}, " + re.escape(DFS) + "->" + re.escape(name)
+                     + r"\([^)]*\)V$", re.M)
+    calls = list(pat.finditer(text))
+    if not calls:
+        sys.exit(f"no call of {name}")
+    for m in reversed(calls):
+        ins = f"\n\n    invoke-direct/range {{{m.group(2)} .. {m.group(2)}}}, {DFS}->ryuRefresh()V"
+        text = text[:m.end()] + ins + text[m.end():]
+    return text, len(calls)
 
 
 def patch_powerkeeper_smali(text):
@@ -216,10 +216,9 @@ def patch_powerkeeper_smali(text):
     text = text[:a] + body + text[b:]
     log.append("updateCustomDataBase")
     # 4. after the lists are (re)built: refresh
-    for pat in (r" parseTopSmartAppFromDb\(Ljava/lang/String;Landroid/util/ArraySet;\)V$",
-                r" parseTopDefineAppFromDb\(Ljava/lang/String;Landroid/util/ArraySet;\)V$"):
-        text, n = refresh_before_returns(text, pat)
-        log.append(f"{pat.split('(')[0].strip()} ({n} returns)")
+    for name in ("parseTopSmartAppFromDb", "parseTopDefineAppFromDb"):
+        text, n = refresh_after_calls(text, name)
+        log.append(f"after {name} ({n} calls)")
     text = text.rstrip("\n") + "\n" + HELPERS
     return text, log
 
