@@ -25,7 +25,7 @@ import build as sib  # noqa: E402
 from icons import ICONS, BLUE, GRAY, GREEN, ORANGE, PURPLE, RED, TEAL, YELLOW  # noqa: E402
 
 MODULE_ID = "hyperos_settings_icons"
-VERSION, VERSION_CODE = "1.6", 7
+VERSION, VERSION_CODE = "1.7", 8
 
 # Entries that other HyperOS builds / devices may have on this screen
 EXTRA = {

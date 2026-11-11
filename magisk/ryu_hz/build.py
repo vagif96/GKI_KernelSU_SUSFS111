@@ -13,8 +13,10 @@ MiSettings  (com.xiaomi.misettings, NewRefreshRateFragment)
 
 PowerKeeper (com.miui.powerkeeper, DisplayFrameSetting)
     in smart mode the per-app map used for the foreground app (mTopApps) becomes
-    Xiaomi's smart map (mTopSmartApps) + the user's switched-off apps (mCustomApps,
-    60 Hz).  Apps left on keep Xiaomi's adaptive behaviour.  updateCustomDataBase
+    Xiaomi's smart map (mTopSmartApps) without its caps below 120 Hz for third-party
+    apps (Xiaomi limits e.g. ~190 apps such as WhatsApp to 90 Hz there), + the user's
+    switched-off apps (mCustomApps, 60 Hz).  Apps left on stay adaptive, up to the
+    panel's maximum; system apps keep Xiaomi's values (camera, calls: 60 Hz).  updateCustomDataBase
     (called when a switch is flipped) no longer replaces the smart map with the
     custom one in smart mode.
 
@@ -96,14 +98,64 @@ def first_insn(body):
 
 HELPERS = f"""
 .method private ryuMerged()Landroid/util/ArrayMap;
-    .locals 3
+    .locals 6
 
-    # RYU: Xiaomi's smart per-app map + the user's switched-off apps (60 Hz)
+    # RYU: Xiaomi's smart per-app map, without its caps below 120 Hz for third-party
+    # apps (switched on = high refresh rate allowed), + the user's switched-off apps (60 Hz)
     new-instance v0, Landroid/util/ArrayMap;
 
     iget-object v1, p0, {DFS}->mTopSmartApps:Landroid/util/ArrayMap;
 
     invoke-direct {{v0, v1}}, Landroid/util/ArrayMap;-><init>(Landroid/util/ArrayMap;)V
+
+    invoke-static {{}}, Lcom/miui/powerkeeper/utils/PowerKeeperPackageManager;->getInstalledThirdPartApps()Landroid/util/ArraySet;
+
+    move-result-object v1
+
+    if-eqz v1, :ryu_m_uncapped
+
+    invoke-virtual {{v0}}, Landroid/util/ArrayMap;->size()I
+
+    move-result v2
+
+    :ryu_m_loop
+    add-int/lit8 v2, v2, -0x1
+
+    if-ltz v2, :ryu_m_uncapped
+
+    invoke-virtual {{v0, v2}}, Landroid/util/ArrayMap;->keyAt(I)Ljava/lang/Object;
+
+    move-result-object v3
+
+    invoke-virtual {{v1, v3}}, Landroid/util/ArraySet;->contains(Ljava/lang/Object;)Z
+
+    move-result v4
+
+    if-eqz v4, :ryu_m_loop
+
+    invoke-virtual {{v0, v2}}, Landroid/util/ArrayMap;->valueAt(I)Ljava/lang/Object;
+
+    move-result-object v4
+
+    instance-of v5, v4, Ljava/lang/Integer;
+
+    if-eqz v5, :ryu_m_loop
+
+    check-cast v4, Ljava/lang/Integer;
+
+    invoke-virtual {{v4}}, Ljava/lang/Integer;->intValue()I
+
+    move-result v4
+
+    const/16 v5, 0x78
+
+    if-ge v4, v5, :ryu_m_loop
+
+    invoke-virtual {{v0, v2}}, Landroid/util/ArrayMap;->removeAt(I)Ljava/lang/Object;
+
+    goto :ryu_m_loop
+
+    :ryu_m_uncapped
 
     const-string v1, "true"
 
@@ -351,6 +403,9 @@ def main():
         run(["curl", "-fsSL", "-o", apktool, APKTOOL_URL])
 
     def pk(dec):
+        ppm = open(smali_file(dec, "Lcom/miui/powerkeeper/utils/PowerKeeperPackageManager;"), encoding="utf-8").read()
+        if ".method public static getInstalledThirdPartApps()Landroid/util/ArraySet;" not in ppm:
+            sys.exit("PowerKeeperPackageManager.getInstalledThirdPartApps() missing")
         p = smali_file(dec, DFS)
         t, log = patch_powerkeeper_smali(open(p, encoding="utf-8").read())
         open(p, "w", encoding="utf-8").write(t)
