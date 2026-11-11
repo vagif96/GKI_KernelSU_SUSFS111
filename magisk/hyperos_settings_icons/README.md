@@ -34,6 +34,16 @@ firmware lacks the activity or the screens differ, this part is skipped and only
 the icons are added.  To keep MIUI's screen: `touch /data/adb/hyperos_icons_no_wifi`
 and reinstall the module.
 
+## Optional: per-app refresh rate in the adaptive mode
+
+`python3 build.py --powerkeeper PowerKeeper.apk --misettings MiSettings.apk` adds two
+prebuilt parts made by `../ryu_hz` from the target phone's APKs (`parts/powerkeeper`,
+`parts/misettings`): Xiaomi's "Apps using high refresh rate" screen is shown also in
+the "Default (recommended)" mode, and apps switched off there run at 60 Hz.
+`service.sh` sets PowerKeeper's misc `custom_switch` = `{"fucSwitch":"true"}` (enables the
+screen on models PowerKeeper does not list).  These parts are used only if the phone has
+exactly the APKs they were built from and switch off after a firmware update.
+
 ## On the phone
 
 * install: `customize.sh` patches `pm path com.android.settings` into

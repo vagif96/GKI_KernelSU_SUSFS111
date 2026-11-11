@@ -25,7 +25,7 @@ import build as sib  # noqa: E402
 from icons import ICONS, BLUE, GRAY, GREEN, ORANGE, PURPLE, RED, TEAL, YELLOW  # noqa: E402
 
 MODULE_ID = "hyperos_settings_icons"
-VERSION, VERSION_CODE = "1.2", 3
+VERSION, VERSION_CODE = "1.3", 4
 
 # Entries that other HyperOS builds / devices may have on this screen
 EXTRA = {
@@ -56,6 +56,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=os.path.join(HERE, "out"))
     ap.add_argument("--work", default=os.path.join(HERE, "work"))
+    ap.add_argument("--powerkeeper", help="PowerKeeper.apk of the target phone (per-app refresh rate part)")
+    ap.add_argument("--misettings", help="MiSettings.apk of the target phone")
     a = ap.parse_args()
     work = os.path.abspath(a.work)
     os.makedirs(work, exist_ok=True)
@@ -116,6 +118,21 @@ def main():
     open(os.path.join(mod, "icons", "map.txt"), "w").write(
         "# preference key, drawable, [existing Settings drawable used instead if present]\n" + "\n".join(rows) + "\n")
 
+    if a.powerkeeper and a.misettings:
+        h_out = os.path.join(work, "hz_out")
+        shutil.rmtree(h_out, ignore_errors=True)
+        sib.run([sys.executable, os.path.join(HERE, "..", "ryu_hz", "build.py"), "--powerkeeper", a.powerkeeper,
+                 "--misettings", a.misettings, "--out", h_out, "--work", os.path.join(work, "hz")])
+        info = {l.split()[0]: dict(kv.split("=") for kv in l.split(" :: ")[0].split()[1:3])
+                for l in open(os.path.join(h_out, "info.txt"))}
+        for name, apk, pkg in (("powerkeeper", "PowerKeeper", "com.miui.powerkeeper"),
+                               ("misettings", "MiSettings", "com.xiaomi.misettings")):
+            pp = os.path.join(mod, "parts", name)
+            os.makedirs(pp)
+            shutil.copy(os.path.join(h_out, apk + ".apk"), os.path.join(pp, "file"))
+            open(os.path.join(pp, "orig_md5"), "w").write(info[apk]["orig"] + "\n")
+            open(os.path.join(pp, "patched_md5"), "w").write(info[apk]["patched"] + "\n")
+            open(os.path.join(pp, "package"), "w").write(pkg + "\n")
     prop = open(os.path.join(mod, "module.prop")).read()
     prop = prop.replace("@VERSION@", VERSION).replace("@VERSION_CODE@", str(VERSION_CODE))
     open(os.path.join(mod, "module.prop"), "w").write(prop)

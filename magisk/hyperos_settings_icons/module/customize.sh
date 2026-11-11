@@ -28,4 +28,25 @@ file_md5 "$OUT" > "$MODPATH/patched_md5"
 echo "$real" > "$MODPATH/target_path"
 set_perm "$OUT" 0 0 0644
 c=$(ctx_of "$real"); [ -n "$c" ] && [ "$c" != "?" ] && chcon "$c" "$OUT"
+# prebuilt APK parts (refresh rate per app in the adaptive mode); each one is
+# used only if the phone has exactly the APK it was built from
+for d in "$MODPATH"/parts/*; do
+  [ -d "$d" ] || continue
+  name=$(basename "$d"); pkg=$(cat "$d/package")
+  real=$(pkg_apk "$pkg")
+  if [ "$real" = UPDATED ]; then ui_print "! $name: $pkg runs from an update in /data/app, skipped"; touch "$d/off"; continue; fi
+  [ -f "$real" ] || { ui_print "! $name: $pkg not found, skipped"; touch "$d/off"; continue; }
+  have=$(file_md5 "$real")
+  prev=$(cat "/data/adb/modules/hyperos_settings_icons/parts/$name/patched_md5" 2>/dev/null)
+  if [ "$have" != "$(cat "$d/orig_md5")" ] && [ "$have" != "$prev" ]; then
+    ui_print "! $name: built for another firmware, skipped"; touch "$d/off"; continue
+  fi
+  [ "$(file_md5 "$d/file")" = "$(cat "$d/patched_md5")" ] || abort "! $name: damaged module zip"
+  echo "$real" > "$d/target_path"
+  set_perm "$d/file" 0 0 0644
+  c=$(ctx_of "$real"); [ -n "$c" ] && [ "$c" != "?" ] && chcon "$c" "$d/file"
+  ui_print "- $name: OK ($real)"
+done
+[ -f "$MODPATH/parts/powerkeeper/off" ] || [ ! -d "$MODPATH/parts/powerkeeper" ] || \
+  ui_print "- Refresh rate: Display > Refresh rate > Apps using high refresh rate (also in Default mode)"
 ui_print "- Done. Reboot to apply."
