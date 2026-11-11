@@ -51,7 +51,11 @@ sets `support_screen_enhance_engine`, `support_AI_display` and
 `support_SR_for_image_display` to true (adds missing ones) and bind-mounts the copy:
 Settings > Display shows "AI image processing".  Works on the current file, so firmware
 updates need nothing.  Whether each feature does something depends on the hardware
-(POCO F5: vppservice + video_box v2, no MEMC driver).  `touch /data/adb/hyperos_icons_no_ai`
+(POCO F5: vppservice + video_box v2, no MEMC driver).  The "Super resolution" (video)
+and MEMC entries only need `debug.config.media.video.ais.support` /
+`debug.config.media.video.frc.support` = true, which the script sets at every boot
+(`/data/adb/hyperos_icons_no_memc` leaves MEMC out).  SR for images is switched off in
+Settings' code itself (`isSrForImageSupport()` always returns false).  `touch /data/adb/hyperos_icons_no_ai`
 turns this part off.
 
 ## On the phone

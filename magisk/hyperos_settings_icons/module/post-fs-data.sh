@@ -40,6 +40,7 @@ features() {
   [ -f /data/adb/hyperos_icons_no_ai ] && { echo "features: off"; return; }
   real=$(features_xml)
   [ -f "$real" ] || { echo "features: $real not found"; return; }
+  ai_props
   unmount_stale "$real"
   if ai_features "$real" "$MODDIR/features.xml"; then
     link_mount "$MODDIR/features.xml" features "$real"

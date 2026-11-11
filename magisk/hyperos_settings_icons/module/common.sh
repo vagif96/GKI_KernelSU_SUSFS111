@@ -53,4 +53,16 @@ ai_features() {
   chmod 0644 "$2"
   ! cmp -s "$1" "$2"
 }
+# Super resolution (video) and MEMC entries are shown only if these properties are
+# "true" (ScreenEnhanceEngineStatusCheck); they are debug.* props, set at every boot.
+# touch /data/adb/hyperos_icons_no_memc to leave MEMC out.
+ai_props() {
+  local p
+  for p in debug.config.media.video.ais.support debug.config.media.video.frc.support; do
+    case "$p" in *frc*) [ -f /data/adb/hyperos_icons_no_memc ] && continue;; esac
+    [ "$(getprop "$p")" = true ] && continue
+    if command -v resetprop >/dev/null 2>&1; then resetprop -n "$p" true; else setprop "$p" true; fi
+    echo "features: $p=$(getprop "$p")"
+  done
+}
 features_xml() { echo "/product/etc/device_features/$(getprop ro.product.device).xml"; }
