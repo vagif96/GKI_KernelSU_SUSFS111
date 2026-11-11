@@ -1,0 +1,126 @@
+#!/sbin/sh
+# Ryu Tweaks – TWRP installer for POCO F5 (marble, ext4 RW ROM).
+# Writes the patched files into /system_ext and /product. No module.
+# Recovery has no framework, so it cannot dexopt or set PowerKeeper's switch:
+# do the two post-boot steps printed at the end.
+OUTFD=$2
+ZIP=$3
+
+ui_print(){ echo "ui_print $1" >> /proc/self/fd/$OUTFD; echo "ui_print " >> /proc/self/fd/$OUTFD; }
+abort(){ ui_print "  !! $1"; ui_print "  Aborted, nothing changed."; exit 1; }
+
+ui_print " "
+ui_print "Ryu Tweaks – direct install (POCO F5)"
+ui_print " "
+
+PD=/tmp/ryu
+rm -rf "$PD"; mkdir -p "$PD"
+unzip -o "$ZIP" -d "$PD" >/dev/null 2>&1
+P="$PD/payload"
+[ -f "$P/bin/ryu_patch" ] || abort "payload missing"
+chmod 0755 "$P/bin/ryu_patch"
+
+dev="$(getprop ro.product.device 2>/dev/null)"
+[ -z "$dev" ] && dev=marble
+ui_print "- device: $dev"
+
+md5(){ md5sum "$1" 2>/dev/null | cut -d' ' -f1; }
+ctx(){ ls -Zd "$1" 2>/dev/null | awk '{print $1}'; }
+
+# mount a dynamic partition rw, print its mountpoint
+mount_rw(){
+  local n="$1" blk mp
+  for blk in /dev/block/mapper/$n /dev/block/mapper/$n-verity /dev/block/by-name/$n; do
+    [ -e "$blk" ] && break
+  done
+  [ -e "$blk" ] || { echo ""; return 1; }
+  mp=$(awk -v b="$blk" '$1==b{print $2; exit}' /proc/mounts)
+  if [ -n "$mp" ]; then
+    mount -o remount,rw "$mp" 2>/dev/null || mount -o remount,rw "$blk" 2>/dev/null
+    echo "$mp"; return 0
+  fi
+  mkdir -p /ryu_$n
+  mount -o rw "$blk" /ryu_$n 2>/dev/null && { echo /ryu_$n; return 0; }
+  echo ""; return 1
+}
+
+SE=$(mount_rw system_ext) || abort "cannot mount system_ext rw"
+PR=$(mount_rw product)   || abort "cannot mount product rw"
+ui_print "- system_ext: $SE"
+ui_print "- product: $PR"
+
+SET="$SE/priv-app/Settings/Settings.apk"
+PK="$SE/app/PowerKeeper/PowerKeeper.apk"
+MS="$PR/priv-app/MiSettings/MiSettings.apk"
+MARBLE="$PR/etc/device_features/$dev.xml"
+BP="$PR/etc/build.prop"
+for f in "$SET" "$PK" "$MS" "$MARBLE" "$BP"; do [ -f "$f" ] || abort "not found: $f"; done
+
+# firmware check (PowerKeeper/MiSettings are prebuilt from a specific APK)
+[ "$(md5 "$PK")" = "$(cat "$P/pk_patched_md5")" ] && abort "already installed (PowerKeeper is patched). Use restore first."
+[ "$(md5 "$PK")" = "$(cat "$P/pk_orig_md5")" ] || abort "PowerKeeper.apk is not the firmware this zip was built for"
+[ "$(md5 "$MS")" = "$(cat "$P/ms_orig_md5")" ] || abort "MiSettings.apk is not the firmware this zip was built for"
+
+# backup originals onto the partitions themselves
+mkdir -p "$SE/ryu_backup" "$PR/ryu_backup"
+[ -f "$SE/ryu_backup/Settings.apk" ]    || cp "$SET"    "$SE/ryu_backup/Settings.apk"
+[ -f "$SE/ryu_backup/PowerKeeper.apk" ] || cp "$PK"     "$SE/ryu_backup/PowerKeeper.apk"
+[ -f "$PR/ryu_backup/MiSettings.apk" ]  || cp "$MS"     "$PR/ryu_backup/MiSettings.apk"
+[ -f "$PR/ryu_backup/$dev.xml" ]        || cp "$MARBLE" "$PR/ryu_backup/$dev.xml"
+[ -f "$PR/ryu_backup/build.prop" ]      || cp "$BP"     "$PR/ryu_backup/build.prop"
+ui_print "- originals backed up to <part>/ryu_backup"
+
+# patch Settings.apk on the fly
+"$P/bin/ryu_patch" "$SET" "$PD/Settings.apk" "$P/icons" >/dev/null 2>&1
+{ [ $? = 0 ] && [ -f "$PD/Settings.apk" ]; } || abort "patching Settings.apk failed"
+ui_print "- Settings.apk patched"
+
+# marble flags
+cp "$MARBLE" "$PD/marble.xml"
+for fl in support_screen_enhance_engine support_AI_display support_SR_for_image_display; do
+  if grep -q "name=\"$fl\"" "$PD/marble.xml"; then
+    sed -i "s#<bool name=\"$fl\">false</bool>#<bool name=\"$fl\">true</bool>#" "$PD/marble.xml"
+  elif grep -q "<!-- Display END -->" "$PD/marble.xml"; then
+    sed -i "s#<!-- Display END -->#<bool name=\"$fl\">true</bool><!-- Display END -->#" "$PD/marble.xml"
+  else
+    sed -i "s#</features>#<bool name=\"$fl\">true</bool></features>#" "$PD/marble.xml"
+  fi
+done
+
+writefile(){ # <src> <dst>
+  local c; c=$(ctx "$2")
+  cp "$1" "$2.ryunew" || abort "write $2"
+  chown 0:0 "$2.ryunew" 2>/dev/null; chmod 0644 "$2.ryunew"
+  [ -n "$c" ] && [ "$c" != "?" ] && chcon "$c" "$2.ryunew" 2>/dev/null
+  mv -f "$2.ryunew" "$2" || abort "rename $2"
+  [ "$(md5 "$2")" = "$(md5 "$1")" ] || abort "verify failed: $2"
+  ui_print "- wrote ${2#$SE}"
+}
+writefile "$PD/Settings.apk" "$SET"
+writefile "$P/PowerKeeper.apk" "$PK"
+writefile "$P/MiSettings.apk" "$MS"
+writefile "$PD/marble.xml" "$MARBLE"
+
+# drop the stale system odex/vdex so ART recompiles the new apks cleanly on boot
+rm -rf "$SE/priv-app/Settings/oat" "$SE/app/PowerKeeper/oat" "$PR/priv-app/MiSettings/oat" 2>/dev/null
+
+# build.prop: super resolution + MEMC entries
+for kv in "debug.config.media.video.ais.support=true" "debug.config.media.video.frc.support=true"; do
+  grep -q "^${kv%%=*}=" "$BP" || echo "$kv" >> "$BP"
+done
+ui_print "- build.prop updated"
+
+sync
+for mp in "$SE" "$PR"; do
+  case "$mp" in /ryu_*) umount "$mp" 2>/dev/null;; *) mount -o remount,ro "$mp" 2>/dev/null;; esac
+done
+rm -rf "$PD"
+
+ui_print " "
+ui_print "Done. Reboot."
+ui_print "First boot recompiles the apps, so it is slower once."
+ui_print " "
+ui_print "After boot, run once in Termux to enable the"
+ui_print "per-app refresh-rate screen (only needed once):"
+ui_print "  su -c 'content call --uri content://com.miui.powerkeeper.configure --method PUT_misc --arg custom_switch --extra value:s:{\"fucSwitch\":\"true\"}; am force-stop com.miui.powerkeeper'"
+exit 0
