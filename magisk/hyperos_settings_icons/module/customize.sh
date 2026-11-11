@@ -28,6 +28,23 @@ file_md5 "$OUT" > "$MODPATH/patched_md5"
 echo "$real" > "$MODPATH/target_path"
 set_perm "$OUT" 0 0 0644
 c=$(ctx_of "$real"); [ -n "$c" ] && [ "$c" != "?" ] && chcon "$c" "$OUT"
+# Display > AI image processing (applied at every boot to the current file)
+if [ -f /data/adb/hyperos_icons_no_ai ]; then
+  ui_print "- AI image processing: off (/data/adb/hyperos_icons_no_ai)"
+else
+  fx=$(features_xml)
+  if [ -f "$fx" ]; then
+    unmount_stale "$fx" >/dev/null
+    if ai_features "$fx" "$TMPDIR/features.xml" 2>/dev/null || ai_features "$fx" "$MODPATH/features.xml"; then
+      ui_print "- AI image processing: $(basename "$fx"): $AI_FLAGS -> true"
+    else
+      ui_print "- AI image processing: already on in $(basename "$fx")"
+    fi
+    rm -f "$MODPATH/features.xml"
+  else
+    ui_print "! AI image processing: $fx not found, skipped"
+  fi
+fi
 # prebuilt APK parts (refresh rate per app in the adaptive mode); each one is
 # used only if the phone has exactly the APK it was built from
 for d in "$MODPATH"/parts/*; do

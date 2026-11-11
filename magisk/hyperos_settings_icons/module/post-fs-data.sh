@@ -36,10 +36,23 @@ settings() {
   link_mount "$MODDIR/Settings.apk" settings "$real"
 }
 
+features() {
+  [ -f /data/adb/hyperos_icons_no_ai ] && { echo "features: off"; return; }
+  real=$(features_xml)
+  [ -f "$real" ] || { echo "features: $real not found"; return; }
+  unmount_stale "$real"
+  if ai_features "$real" "$MODDIR/features.xml"; then
+    link_mount "$MODDIR/features.xml" features "$real"
+  else
+    echo "features: flags already on"
+  fi
+}
+
 {
   echo "boot $(date)"
   rm -f "$LINKDIR/Settings.apk"   # link name used by v1.1-1.2
   settings
+  features
   for d in "$MODDIR"/parts/*; do
     [ -d "$d" ] || continue
     name=$(basename "$d"); real=$(cat "$d/target_path" 2>/dev/null)

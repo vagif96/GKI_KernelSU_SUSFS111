@@ -35,3 +35,22 @@ unmount_stale() {
   [ $i -gt 0 ] && echo "$(basename "$1"): removed $i earlier mount(s)"
   return 0
 }
+# Display > "AI image processing": FeatureParser flags of the screen enhancement engine.
+# <in> <out>; each flag is set to true (or added); returns 1 if nothing changed.
+# touch /data/adb/hyperos_icons_no_ai to leave device_features alone.
+AI_FLAGS="support_screen_enhance_engine support_AI_display support_SR_for_image_display"
+ai_features() {
+  cp -f "$1" "$2" || return 1
+  for f in $AI_FLAGS; do
+    if grep -q "name=\"$f\"" "$2"; then
+      sed -i "s#<bool name=\"$f\">false</bool>#<bool name=\"$f\">true</bool>#" "$2"
+    elif grep -q "<!-- Display END -->" "$2"; then
+      sed -i "s#<!-- Display END -->#<bool name=\"$f\">true</bool><!-- Display END -->#" "$2"
+    else
+      sed -i "s#</features>#<bool name=\"$f\">true</bool></features>#" "$2"
+    fi
+  done
+  chmod 0644 "$2"
+  ! cmp -s "$1" "$2"
+}
+features_xml() { echo "/product/etc/device_features/$(getprop ro.product.device).xml"; }

@@ -3,4 +3,4 @@ name=HyperOS Settings Icons
 version=v@VERSION@
 versionCode=@VERSION_CODE@
 author=vagif96
-description=Icons in Settings > Additional settings; Wi-Fi > Saved networks opens the detailed stock screen; Apps using high refresh rate also in the adaptive mode (prebuilt parts). Patches the Settings.apk of this phone at install time (and again by itself after a firmware update), nothing is downloaded.
+description=Icons in Settings > Additional settings; Wi-Fi > Saved networks opens the detailed stock screen; Apps using high refresh rate also in the adaptive mode (prebuilt parts); Display > AI image processing. Patches the Settings.apk of this phone at install time (and again by itself after a firmware update), nothing is downloaded.

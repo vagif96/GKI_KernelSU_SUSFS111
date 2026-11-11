@@ -44,6 +44,16 @@ the "Default (recommended)" mode, and apps switched off there run at 60 Hz.
 screen on models PowerKeeper does not list).  These parts are used only if the phone has
 exactly the APKs they were built from and switch off after a firmware update.
 
+## Display: AI image processing
+
+At every boot `post-fs-data.sh` copies `/product/etc/device_features/<ro.product.device>.xml`,
+sets `support_screen_enhance_engine`, `support_AI_display` and
+`support_SR_for_image_display` to true (adds missing ones) and bind-mounts the copy:
+Settings > Display shows "AI image processing".  Works on the current file, so firmware
+updates need nothing.  Whether each feature does something depends on the hardware
+(POCO F5: vppservice + video_box v2, no MEMC driver).  `touch /data/adb/hyperos_icons_no_ai`
+turns this part off.
+
 ## On the phone
 
 * install: `customize.sh` patches `pm path com.android.settings` into
