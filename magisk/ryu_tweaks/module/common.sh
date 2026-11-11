@@ -27,3 +27,14 @@ settings_apk() {
 # mounts come from hard links outside /data/adb: Zygisk implementations (ReZygisk ...)
 # remove mounts whose source is under /data/adb/modules from app processes
 LINKDIR=/data/misc/ryu_tweaks
+# Our bind mounts can survive a "soft"/userspace reboot; remove them before the
+# md5 checks, otherwise the still-mounted patched file looks like a firmware change.
+unmount_stale() {
+  local i=0
+  while [ $i -lt 4 ] && grep -q " $1 " /proc/self/mountinfo; do
+    umount -l "$1" 2>/dev/null || break
+    i=$((i + 1))
+  done
+  [ $i -gt 0 ] && echo "$(basename "$1"): removed $i earlier mount(s)"
+  return 0
+}

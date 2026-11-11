@@ -18,6 +18,7 @@ settings() {
   real=$(cat "$MODDIR/target_path" 2>/dev/null)
   [ -f "$real" ] || real=$(settings_apk)
   [ -f "$real" ] || { echo "settings: Settings.apk not found"; return; }
+  unmount_stale "$real"
   have=$(file_md5 "$real")
   if [ "$have" = "$(cat "$MODDIR/patched_md5")" ]; then echo "settings: already mounted"; return; fi
   if [ "$have" != "$(cat "$MODDIR/orig_md5")" ] || [ ! -f "$MODDIR/Settings.apk" ]; then
@@ -44,6 +45,7 @@ settings() {
     name=$(basename "$d"); real=$(cat "$d/target_path" 2>/dev/null)
     [ -f "$d/off" ] && { echo "$name: off"; continue; }
     [ -f "$real" ] && [ -f "$d/file" ] || { echo "$name: missing files"; continue; }
+    unmount_stale "$real"
     have=$(file_md5 "$real")
     [ "$have" = "$(cat "$d/patched_md5")" ] && { echo "$name: already mounted"; continue; }
     if [ "$have" != "$(cat "$d/orig_md5")" ]; then

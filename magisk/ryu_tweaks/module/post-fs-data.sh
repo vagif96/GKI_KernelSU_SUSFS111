@@ -8,6 +8,7 @@ MODDIR=${0%/*}
     name=$(basename "$d"); real=$(cat "$d/target_path" 2>/dev/null)
     [ -f "$d/off" ] && { echo "$name: off"; continue; }
     [ -f "$real" ] && [ -f "$d/file" ] || { echo "$name: missing files"; continue; }
+    unmount_stale "$real"
     have=$(file_md5 "$real")
     [ "$have" = "$(cat "$d/patched_md5")" ] && { echo "$name: already mounted"; continue; }
     if [ "$have" != "$(cat "$d/orig_md5")" ]; then
