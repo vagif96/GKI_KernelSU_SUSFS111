@@ -1,3 +1,5 @@
 work/
 out/
 services.jar
+twrp_restore/services.jar
+twrp_apply/services.jar
