@@ -12,10 +12,11 @@ for c in /system/framework/services.jar /system_ext/framework/services.jar /syst
   [ -f "$c" ] && { SJ="$c"; break; }
 done
 [ -n "$SJ" ] || { echo "services.jar not found"; exit 1; }
-case "$SJ" in /system_ext/*) PART=/system_ext;; /system/system_ext/*) PART=/system;; *) PART=/system;; esac
+PART=$(awk -v f="$SJ" '{ m=$2; p=(m=="/"?"/":m"/"); if (substr(f,1,length(p))==p && length(m)>length(b)) b=m } END{ print b }' /proc/mounts)
+[ -n "$PART" ] || { echo "mountpoint not found"; exit 1; }
 
 c=$(ctx "$SJ")
-mount -o remount,rw "$PART" || { echo "remount rw failed"; exit 1; }
+mount -o remount,rw "$PART" 2>/dev/null || mount -o rw,remount "$PART" 2>/dev/null || { echo "remount rw failed"; exit 1; }
 cp "$BACKUP/services.jar" "$SJ.ryur" && chown 0:0 "$SJ.ryur" && chmod 0644 "$SJ.ryur" && { [ -n "$c" ] && chcon "$c" "$SJ.ryur"; mv -f "$SJ.ryur" "$SJ"; echo "restored $SJ"; }
 # restore oat artifacts
 for b in "$BACKUP"/oat_*; do

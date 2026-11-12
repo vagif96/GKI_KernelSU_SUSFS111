@@ -25,9 +25,11 @@ for c in /system/framework/services.jar /system_ext/framework/services.jar /syst
   [ -f "$c" ] && { SJ="$c"; break; }
 done
 [ -n "$SJ" ] || die "services.jar not found"
-case "$SJ" in /system_ext/*) PART=/system_ext;; /system/system_ext/*) PART=/system;; *) PART=/system;; esac
+# the real mountpoint holding $SJ (on system-as-root this is "/", not "/system")
+PART=$(awk -v f="$SJ" '{ m=$2; p=(m=="/"?"/":m"/"); if (substr(f,1,length(p))==p && length(m)>length(b)) b=m } END{ print b }' /proc/mounts)
+[ -n "$PART" ] || die "cannot find the mountpoint of $SJ"
 OATDIR="$(dirname "$SJ")/oat"
-say "- services.jar: $SJ"
+say "- services.jar: $SJ   (mount: $PART)"
 
 cur=$(md5 "$SJ")
 [ "$cur" = "$(cat "$DIR/services_patched_md5")" ] && die "already patched (services.jar is the patched one)."
@@ -48,7 +50,7 @@ done
 say "- backed up services.jar$( [ -n "$OATS" ] && echo " + oat artifacts" ) to $BACKUP"
 
 c=$(ctx "$SJ")
-mount -o remount,rw "$PART" || die "remount rw $PART"
+mount -o remount,rw "$PART" 2>/dev/null || mount -o rw,remount "$PART" 2>/dev/null || die "remount rw $PART failed (mounts: $(grep " $PART " /proc/mounts | head -1))"
 cp "$DIR/services.jar" "$SJ.ryunew" || { mount -o remount,ro "$PART"; die "write failed"; }
 chown 0:0 "$SJ.ryunew"; chmod 0644 "$SJ.ryunew"
 [ -n "$c" ] && [ "$c" != "?" ] && chcon "$c" "$SJ.ryunew"
