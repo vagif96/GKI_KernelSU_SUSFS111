@@ -1,0 +1,13 @@
+#!/sbin/sh
+OUTFD=$2; ZIP=$3
+ui_print(){ echo "ui_print $1" >> /proc/self/fd/$OUTFD; echo "ui_print " >> /proc/self/fd/$OUTFD; }
+abort(){ ui_print "  !! $1"; exit 1; }
+ui_print " "
+ui_print "Ryu in-place patch (icons, Wi-Fi, AI display, SR/MEMC)"
+ui_print " "
+PD=/tmp/ryu_payload; rm -rf "$PD"; mkdir -p "$PD"
+unzip -o "$ZIP" -d "$PD" >/dev/null 2>&1
+[ -f "$PD/payload/bin/ryu_patch" ] || abort "payload missing"
+chmod 0755 "$PD/payload/bin/ryu_patch"
+PD="$PD/payload"
+. "$PD/patch.sh"
