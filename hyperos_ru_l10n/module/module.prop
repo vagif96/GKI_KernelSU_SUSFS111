@@ -1,0 +1,6 @@
+id=hyperos_ru_l10n
+name=HyperOS 4.0 CN — русский язык
+version=v1.0
+versionCode=1
+author=xiaomi.eu translators (перевод), сборка оверлеев — GKI_KernelSU_SUSFS111
+description=Русская локализация для китайской HyperOS 4.0 (marble, OS4.0.0.x CNXM): 52 статических RRO-оверлея (~55 000 строк) + переключение системы на русский.
