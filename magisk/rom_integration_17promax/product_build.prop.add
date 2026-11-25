@@ -1,0 +1,4 @@
+# Append these two lines to product build.prop (/product/etc/build.prop):
+# Super Resolution + MEMC support flags.
+debug.config.media.video.ais.support=true
+debug.config.media.video.frc.support=true

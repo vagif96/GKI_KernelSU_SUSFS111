@@ -1,0 +1,23 @@
+# Ryu Balanced Tune — baked into the ROM (no module).
+# Pure init 'write' lines: no shell service, so SELinux has nothing to deny.
+# Governor (walt), CPU frequencies and the I/O scheduler are left stock.
+# Any line whose node is absent on this kernel just fails harmlessly.
+
+on property:sys.boot_completed=1
+    # --- networking: TCP BBR + fair-queue, fast open ---
+    write /proc/sys/net/ipv4/tcp_congestion_control bbr
+    write /proc/sys/net/core/default_qdisc fq
+    write /proc/sys/net/ipv4/tcp_fastopen 3
+
+    # --- vm: lighter writeback + cache pressure ---
+    write /proc/sys/vm/dirty_background_ratio 5
+    write /proc/sys/vm/dirty_ratio 20
+    write /proc/sys/vm/vfs_cache_pressure 80
+    write /proc/sys/vm/stat_interval 10
+
+    # --- scheduler statistics accounting off (micro-efficiency) ---
+    write /proc/sys/kernel/sched_schedstats 0
+
+    # --- storage queue: drop I/O stats + entropy contribution (UFS = sda) ---
+    write /sys/block/sda/queue/iostats 0
+    write /sys/block/sda/queue/add_random 0
