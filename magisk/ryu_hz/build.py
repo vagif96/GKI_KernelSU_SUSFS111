@@ -304,9 +304,10 @@ def patch_misettings(dec):
         sys.exit("MiSettings already patched")
     smart = find_helper(dec, "is_smart_fps", "Settings$System;->getInt")
     speed = find_helper(dec, "speed_mode", "Settings$System;->getInt")
-    m = re.search(r'const-string (v\d+), "custom_mode_switch"\n\n    invoke-static \{\w+, \1\}, '
-                  r'Landroid/provider/Settings\$System;->getString\(Landroid/content/ContentResolver;Ljava/lang/String;\)Ljava/lang/String;\n\n'
-                  r"    move-result-object (\w+)\n\n    sput-object \2, " + re.escape(NRF) + r"->(\w+):Ljava/lang/String;", text)
+    _g = r"\s*(?:\.line \d+\s*)*"  # tolerate apktool .line debug directives between instructions
+    m = re.search(r'const-string (v\d+), "custom_mode_switch"' + _g + r'invoke-static \{\w+, \1\}, '
+                  r'Landroid/provider/Settings\$System;->getString\(Landroid/content/ContentResolver;Ljava/lang/String;\)Ljava/lang/String;' + _g +
+                  r"move-result-object (\w+)" + _g + r"sput-object \2, " + re.escape(NRF) + r"->(\w+):Ljava/lang/String;", text)
     if not m:
         sys.exit("custom_mode_switch field not found")
     sw_field = m.group(3)
