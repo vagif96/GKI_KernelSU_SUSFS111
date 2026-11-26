@@ -31,6 +31,26 @@
   ```
   (иконки: `magisk/hyperos_settings_icons/build.py` EXTRA + `magisk/ryu_settings_icons/icons.py`)
 
+- **ВАЖНО для порта HyperOS 3.0.332 / A17 (popsicle) — две правки, без которых иконки НЕ видны:**
+  1. **НЕ использовать `--no-showicon`.** Экран `xml/other_personal_settings` состоит из
+     `com.android.settingslib.miuisettings.preference.Preference`, а этот класс в `PreferenceDelegate`
+     вызывает `hideIcon()` (setIcon(null) + обнуление `mIconResId` через рефлексию), ЕСЛИ нет
+     `miuisettings:showIcon="true"`. Поэтому нужен И `android:icon`, И `showIcon="true"` на каждой
+     записи — то есть поведение `ryu_patch` ПО УМОЛЧАНИЮ (без флага). `ValuePreference` наследует
+     miuix `TextPreference` и показал бы `android:icon` и без флага, но лишний `showIcon` ему не мешает.
+  2. **Таблица ресурсов в этом порте SPARSE.** Новые drawable не резолвятся, пока тип `drawable`
+     не разрежён в плотные u32-смещения. Разрядить ТОЛЬКО тип `drawable` (≈+0.7 МБ; весь arsc = +13 МБ
+     и раздел не влезает). Скрипт: `desparse2.py` (де-спарс одного типа в сыром `resources.arsc`),
+     затем `ryu_patch` на получившийся apk. Проверка: `aapt2 dump xmltree` экрана должен показывать
+     у каждой записи и `android:icon=@…`, и `miuisettings:showIcon=true`.
+
+- **Доставка на этом ROM — ТОЛЬКО запись в раздел (или вшивание в прошивку).** Модуль KernelSU
+  НЕ накладывает priv-app (SUSFS + overlayfs `mi_ext` на `/system_ext/priv-app` — проверено:
+  `pm path`/`mount` показывают исходный файл раздела, оверлей модуля не виден). Запись вживую:
+  `mount -o remount,rw /system_ext` (общий суперблок), затем свежий `mount <dm системного_ext> /mnt/se`
+  (видит сырой ext4 без оверлея), `cp` в `/mnt/se/priv-app/Settings/Settings.apk`, `restorecon`,
+  `rm -rf …/oat`, `sync`, `umount`. Номер `dm-X` плавает между загрузками — брать из `mount | grep ' /system_ext '`.
+
 ## 2. Громкость Bluetooth/наушников (снятие EU-лимита)
 
 - **Что:** кривые громкости music без EU-лимита (`_CE`): 0 dB на максимуме, середина +3–4 dB,
