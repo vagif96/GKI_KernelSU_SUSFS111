@@ -580,6 +580,11 @@ type iconRef struct {
 	id  uint32
 }
 
+// noShowIcon: when set (newer miuix framework, e.g. HyperOS 3.0.332 / A17), add
+// only android:icon and skip the obsolete miuisettings:showIcon attribute, which
+// that framework no longer honours (and whose presence suppresses the icon).
+var noShowIcon bool
+
 // patchXML adds android:icon=@id and miuisettings:showIcon=true to every entry
 // whose android:key is in icons.  Returns the new XML and the keys it changed.
 func patchXML(x []byte, icons map[string]uint32, skip func(elem, key string) bool) ([]byte, []iconRef, []string, error) {
@@ -710,8 +715,13 @@ func patchXML(x []byte, icons map[string]uint32, skip func(elem, key string) boo
 		if !ok {
 			id, ok = icons["*"]
 		}
-		if hasIcon { // icon already there (hidden by MIUI): only make it visible
-			if showAt >= 0 {
+		if hasIcon { // icon already there
+			if noShowIcon { // miuix shows android:icon on its own; leave entry as is
+				body = append(body, b...)
+				done = append(done, iconRef{key, 0})
+				continue
+			}
+			if showAt >= 0 { // old framework: unhide via showIcon=true
 				nb := append([]byte(nil), b...)
 				a := nb[ext+attrStart+showAt*attrSize:]
 				le.PutUint32(a[8:], 0xffffffff)
@@ -743,13 +753,15 @@ func patchXML(x []byte, icons map[string]uint32, skip func(elem, key string) boo
 			icon := xattr{androidIdx, uint32(iconIdx), 0xffffffff, 8, 0, typeRef, id}
 			nattrs = append(append(append([]xattr(nil), attrs[:pos]...), icon), attrs[pos:]...)
 		}
-		if showAt >= 0 {
-			if showAt >= pos {
-				showAt++
+		if !noShowIcon {
+			if showAt >= 0 {
+				if showAt >= pos {
+					showAt++
+				}
+				nattrs[showAt].vtype, nattrs[showAt].data, nattrs[showAt].raw = typeBool, 0xffffffff, 0xffffffff
+			} else {
+				nattrs = append(nattrs, xattr{miuiIdx, showIdx, 0xffffffff, 8, 0, typeBool, 0xffffffff})
 			}
-			nattrs[showAt].vtype, nattrs[showAt].data, nattrs[showAt].raw = typeBool, 0xffffffff, 0xffffffff
-		} else {
-			nattrs = append(nattrs, xattr{miuiIdx, showIdx, 0xffffffff, 8, 0, typeBool, 0xffffffff})
 		}
 		fix := func(v uint16) uint16 {
 			if v > 0 && int(v)-1 >= pos {
@@ -1052,6 +1064,8 @@ func main() {
 	for _, a := range os.Args[1:] {
 		if a == "--no-wifi" {
 			wifi = false
+		} else if a == "--no-showicon" {
+			noShowIcon = true
 		} else {
 			args = append(args, a)
 		}
